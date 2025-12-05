@@ -3,6 +3,7 @@ import { Prompt, Folder, extractVariables, PromptVersion } from '../types';
 import { Icons } from './Icon';
 import { optimizePromptContent } from '../services/geminiService';
 import { createPromptVersion } from '../services/storageService';
+import { copyToClipboard } from '../utils/clipboard';
 
 interface DetailViewProps {
   prompt: Prompt | null;
@@ -133,12 +134,18 @@ export const DetailView: React.FC<DetailViewProps> = ({
     setFormData(prev => ({ ...prev, tags: prev.tags?.filter(t => t !== tagToRemove) }));
   };
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!prompt?.content) return;
+
     if (variables.length > 0) {
       onCopyWithVariables(prompt.content);
     } else {
-      onCopy(prompt.content);
+      const success = await copyToClipboard(prompt.content);
+      if (success) {
+        onNotify('Copied to clipboard!', 'success');
+      } else {
+        onNotify('Failed to copy', 'error');
+      }
     }
   };
 
@@ -531,7 +538,17 @@ export const DetailView: React.FC<DetailViewProps> = ({
           )}
 
           {/* Content Card */}
-          <div className="card" style={{ position: 'relative' }}>
+          <div
+            className="card"
+            style={{
+              position: 'relative',
+              cursor: 'pointer',
+              transition: 'border-color 0.2s',
+            }}
+            onClick={handleCopy}
+            onDoubleClick={() => setIsEditing(true)}
+            title="Click to copy, Double-click to edit"
+          >
             <pre style={{
               whiteSpace: 'pre-wrap',
               fontFamily: 'var(--font-mono)',

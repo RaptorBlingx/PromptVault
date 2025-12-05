@@ -1,6 +1,7 @@
 import React from 'react';
 import { Prompt } from '../types';
 import { Icons } from './Icon';
+import { copyToClipboard } from '../utils/clipboard';
 
 interface PromptCardProps {
   prompt: Prompt;
@@ -221,12 +222,9 @@ export const PromptCard: React.FC<PromptCardProps> = ({
 
         {/* Copy Button */}
         <button
-          onClick={(e) => {
+          onClick={async (e) => {
             e.stopPropagation();
-            navigator.clipboard.writeText(prompt.content);
-            // Optional: Show tooltip or toast? The parent handles toasts usually, but here we do it inline?
-            // We don't have access to addToast here easily without prop drilling.
-            // Let's just rely on the action.
+            await copyToClipboard(prompt.content);
           }}
           className="action-btn"
           style={{
