@@ -124,6 +124,33 @@ class ApiClient {
             return null;
         }
     }
+
+    async updatePrompt(id: string, updates: Partial<Prompt>): Promise<Prompt | null> {
+        try {
+            const response = await fetch(`${this.baseUrl}/api/prompts/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updates),
+            });
+            if (!response.ok) throw new Error('Failed to update prompt');
+            return response.json();
+        } catch (error) {
+            console.error('Failed to update prompt:', error);
+            return null;
+        }
+    }
+
+    async deletePrompt(id: string): Promise<boolean> {
+        try {
+            const response = await fetch(`${this.baseUrl}/api/prompts/${id}`, {
+                method: 'DELETE',
+            });
+            return response.ok;
+        } catch (error) {
+            console.error('Failed to delete prompt:', error);
+            return false;
+        }
+    }
 }
 
 export const apiClient = new ApiClient();

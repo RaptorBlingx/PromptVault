@@ -48,7 +48,7 @@ function createWindow(): void {
         alwaysOnTop: true,
         skipTaskbar: true,
         resizable: false,
-        hasShadow: true,
+        hasShadow: false,
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -175,22 +175,44 @@ ipcMain.handle('set-server-url', (_, url: string) => {
 ipcMain.handle('toggle-expand', (_, isExpanded: boolean) => {
     if (!mainWindow) return;
 
-    const [x, y] = mainWindow.getPosition();
+    const [currentX, currentY] = mainWindow.getPosition();
+    const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize;
 
     if (isExpanded) {
         // Expand window
-        mainWindow.setSize(EXPANDED_WIDTH, EXPANDED_HEIGHT);
-        // Adjust position so it doesn't go off screen
-        const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize;
-        const newX = Math.min(x, screenWidth - EXPANDED_WIDTH);
-        const newY = Math.min(y, screenHeight - EXPANDED_HEIGHT);
-        mainWindow.setPosition(newX, newY);
+        // Calculate new position to keep it on screen
+        const newX = Math.min(currentX, screenWidth - EXPANDED_WIDTH);
+        const newY = Math.min(currentY, screenHeight - EXPANDED_HEIGHT);
+
+        mainWindow.setBounds({
+            x: newX,
+            y: newY,
+            width: EXPANDED_WIDTH,
+            height: EXPANDED_HEIGHT
+        });
     } else {
         // Collapse to bubble
-        mainWindow.setSize(BUBBLE_SIZE, BUBBLE_SIZE);
+        // We want to keep the bubble roughly where the top-left (or user preferred corner) was
+        // But since we might have moved the expanded window, let's just use current position
+        // ensuring it fits
+        const newX = Math.min(currentX, screenWidth - BUBBLE_SIZE);
+        const newY = Math.min(currentY, screenHeight - BUBBLE_SIZE);
+
+        mainWindow.setBounds({
+            x: newX,
+            y: newY,
+            width: BUBBLE_SIZE,
+            height: BUBBLE_SIZE
+        });
     }
 
     store.set('isExpanded', isExpanded);
+});
+
+ipcMain.handle('move-window', (_, { x, y }: { x: number; y: number }) => {
+    if (!mainWindow) return;
+    mainWindow.setPosition(Math.round(x), Math.round(y));
+    store.set('windowPosition', { x: Math.round(x), y: Math.round(y) });
 });
 
 ipcMain.handle('open-web-app', () => {

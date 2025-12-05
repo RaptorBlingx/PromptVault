@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Window management
     toggleExpand: (isExpanded: boolean) => ipcRenderer.invoke('toggle-expand', isExpanded),
     getIsExpanded: () => ipcRenderer.invoke('get-is-expanded'),
+    moveWindow: (pos: { x: number; y: number }) => ipcRenderer.invoke('move-window', pos),
 
     // Actions
     openWebApp: () => ipcRenderer.invoke('open-web-app'),
@@ -34,6 +35,7 @@ declare global {
             setServerUrl: (url: string) => Promise<void>;
             toggleExpand: (isExpanded: boolean) => Promise<void>;
             getIsExpanded: () => Promise<boolean>;
+            moveWindow: (pos: { x: number; y: number }) => Promise<void>;
             openWebApp: () => Promise<void>;
             copyToClipboard: (text: string) => Promise<void>;
             onOpenSettings: (callback: () => void) => () => void;

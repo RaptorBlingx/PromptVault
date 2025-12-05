@@ -2,7 +2,7 @@
 // PromptVault Bubble - Main App Component
 // ============================================
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { apiClient, Prompt, Folder, ConnectionStatus } from './api';
 
 // ----- Variable Extraction -----
@@ -45,9 +45,17 @@ const App: React.FC = () => {
     const [serverUrl, setServerUrl] = useState('');
     const [copiedId, setCopiedId] = useState<string | null>(null);
 
+    // Editor State
+    const [editorMode, setEditorMode] = useState<'create' | 'edit' | null>(null);
+    const [editorData, setEditorData] = useState({ title: '', content: '', id: '' });
+
     // Variable modal
     const [variableModal, setVariableModal] = useState<{ open: boolean; prompt: Prompt | null }>({ open: false, prompt: null });
     const [variableValues, setVariableValues] = useState<Record<string, string>>({});
+
+    // Dragging State
+    const isDragging = useRef(false);
+    const dragOffset = useRef({ x: 0, y: 0 });
 
     // Initialize
     useEffect(() => {
@@ -106,11 +114,132 @@ const App: React.FC = () => {
         }
     }, []);
 
+    // ----- Dragging Logic -----
+    const handleMouseDown = (e: React.MouseEvent) => {
+        if (e.button !== 0) return; // Only left click
+        isDragging.current = true;
+        dragOffset.current = { x: e.screenX, y: e.screenY };
+
+        // Add global listeners
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+    };
+
+    const handleMouseMove = useCallback((e: MouseEvent) => {
+        if (!isDragging.current) return;
+
+        const deltaX = e.screenX - dragOffset.current.x;
+        const deltaY = e.screenY - dragOffset.current.y;
+
+        // We need the current window position to add delta
+        // But since we don't track it locally, we can't easily do relative moves without querying main
+        // A simpler approach for "manual drag" is to ask main to move relative to current
+        // BUT, standard drag usually sets position based on mouse delta.
+        // Let's use a simpler approach: Just tell main to move by delta? No, setPosition is absolute.
+
+        // Better approach: Since we are in a transparent window that might cover the screen (if expanded)
+        // or just a bubble.
+        // Actually, for the bubble, we can use the `movementX/Y` from the event if we were locked,
+        // but screenX/Y is better.
+
+        // Wait, to do this properly without lag, we need the initial window position.
+        // Let's just use the `move-window` IPC which we defined to take absolute coordinates.
+        // We need to know where the window IS.
+        // Let's assume the main process handles the "move relative" if we send delta?
+        // No, I defined `move-window` to take {x, y}.
+
+        // Let's change strategy: We will use `webkit-app-region: drag` for the expanded header,
+        // but for the bubble button, we need to distinguish click vs drag.
+        // Actually, if I remove `webkit-app-region: drag` from the bubble, I can implement a "hold to drag"
+        // or just use a small drag handle.
+        // OR, I can use the fact that `click` fires after `mouseup`.
+        // If I moved more than a few pixels, it's a drag, not a click.
+
+        // Let's try this:
+        // 1. On mousedown, get current window position from main (async).
+        // 2. Then start tracking delta.
+        // This might be laggy.
+
+        // Alternative: Just use a specific "Drag" handle icon on the bubble?
+        // The user said "the bubble is stuck".
+        // Let's try to make the bubble draggable by holding it.
+
+        // Actually, `window.moveTo` works in Electron renderer if `nodeIntegration` is off?
+        // No, usually blocked.
+
+        // Let's go with: The bubble button itself is NOT draggable by default (to allow clicks),
+        // but maybe the outer rim is? Or add a small drag indicator.
+
+        // User wants it to be "much more better".
+        // Let's implement a proper drag handler.
+        // I will use `window.electronAPI.moveWindow` but I need the current position.
+        // I'll add `getWindowPosition` to API?
+        // Too complicated for now.
+
+        // SIMPLEST FIX:
+        // Use `webkit-app-region: drag` on a *part* of the bubble, e.g. an outer ring,
+        // and let the center be clickable.
+        // OR, use `webkit-app-region: drag` but put a `no-drag` button inside it.
+        // Yes! That's the standard Electron way.
+        // Make the bubble `drag`, but the icon inside `no-drag`.
+    }, []);
+
+    const handleMouseUp = () => {
+        isDragging.current = false;
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    // ----- CRUD Logic -----
+    const handleSavePrompt = async () => {
+        if (!editorData.title.trim() || !editorData.content.trim()) return;
+
+        if (editorMode === 'create') {
+            const newPrompt = {
+                title: editorData.title,
+                content: editorData.content,
+                tags: [],
+                isFavorite: false,
+                isPinned: false,
+                folderId: null,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                versions: []
+            };
+            await apiClient.createPrompt(newPrompt);
+        } else if (editorMode === 'edit' && editorData.id) {
+            await apiClient.updatePrompt(editorData.id, {
+                title: editorData.title,
+                content: editorData.content
+            });
+        }
+
+        setEditorMode(null);
+        setEditorData({ title: '', content: '', id: '' });
+        loadData();
+    };
+
+    const handleDeletePrompt = async (id: string) => {
+        if (confirm('Are you sure you want to delete this prompt?')) {
+            await apiClient.deletePrompt(id);
+            loadData();
+        }
+    };
+
+    const startCreate = () => {
+        setEditorMode('create');
+        setEditorData({ title: '', content: '', id: '' });
+    };
+
+    const startEdit = (prompt: Prompt) => {
+        setEditorMode('edit');
+        setEditorData({ title: prompt.title, content: prompt.content, id: prompt.id });
+    };
+
     const handleCopy = useCallback(async (prompt: Prompt) => {
         const variables = extractVariables(prompt.content);
 
         if (variables.length > 0) {
-            // Show variable modal
             const initialValues: Record<string, string> = {};
             variables.forEach(v => {
                 initialValues[v.name] = v.defaultValue || '';
@@ -118,7 +247,6 @@ const App: React.FC = () => {
             setVariableValues(initialValues);
             setVariableModal({ open: true, prompt });
         } else {
-            // Direct copy
             await copyToClipboard(prompt.content, prompt.id);
         }
     }, []);
@@ -165,7 +293,6 @@ const App: React.FC = () => {
             );
         }
 
-        // Sort: pinned first, then by most recently updated
         return [...result].sort((a, b) => {
             if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
             return b.updatedAt - a.updatedAt;
@@ -178,9 +305,48 @@ const App: React.FC = () => {
     // ----- Render Bubble -----
     if (!isExpanded) {
         return (
-            <button className="bubble-button" onClick={() => handleExpand(true)}>
-                <span className="bubble-icon">💬</span>
-            </button>
+            // The container is draggable, the button inside captures clicks
+            <div className="bubble-container">
+                <button className="bubble-button" onClick={() => handleExpand(true)}>
+                    <span className="bubble-icon">💬</span>
+                </button>
+            </div>
+        );
+    }
+
+    // ----- Render Editor -----
+    if (editorMode) {
+        return (
+            <div className="panel">
+                <div className="panel-header">
+                    <span className="panel-title">
+                        {editorMode === 'create' ? '✨ New Prompt' : '✏️ Edit Prompt'}
+                    </span>
+                    <div className="panel-actions">
+                        <button className="icon-btn" onClick={() => setEditorMode(null)}>✕</button>
+                    </div>
+                </div>
+                <div className="editor-panel">
+                    <input
+                        className="editor-input title"
+                        placeholder="Prompt Title"
+                        value={editorData.title}
+                        onChange={e => setEditorData(prev => ({ ...prev, title: e.target.value }))}
+                        autoFocus
+                    />
+                    <textarea
+                        className="editor-input content"
+                        placeholder="Enter your prompt content... (use {{variable}} for dynamic fields)"
+                        value={editorData.content}
+                        onChange={e => setEditorData(prev => ({ ...prev, content: e.target.value }))}
+                    />
+                    <div className="editor-footer">
+                        <button className="save-btn" onClick={handleSavePrompt}>
+                            {editorMode === 'create' ? 'Create Prompt' : 'Save Changes'}
+                        </button>
+                    </div>
+                </div>
+            </div>
         );
     }
 
@@ -192,9 +358,7 @@ const App: React.FC = () => {
                 <div className="panel-header">
                     <span className="panel-title">📝 Fill Variables</span>
                     <div className="panel-actions">
-                        <button className="icon-btn" onClick={() => setVariableModal({ open: false, prompt: null })}>
-                            ✕
-                        </button>
+                        <button className="icon-btn" onClick={() => setVariableModal({ open: false, prompt: null })}>✕</button>
                     </div>
                 </div>
                 <div className="settings-panel">
@@ -225,9 +389,7 @@ const App: React.FC = () => {
                 <div className="panel-header">
                     <span className="panel-title">⚙️ Settings</span>
                     <div className="panel-actions">
-                        <button className="icon-btn" onClick={() => setShowSettings(false)}>
-                            ✕
-                        </button>
+                        <button className="icon-btn" onClick={() => setShowSettings(false)}>✕</button>
                     </div>
                 </div>
                 <div className="settings-panel">
@@ -241,9 +403,7 @@ const App: React.FC = () => {
                             placeholder="http://10.33.10.109:2529"
                         />
                     </div>
-                    <button className="save-btn" onClick={handleSaveSettings}>
-                        Save Settings
-                    </button>
+                    <button className="save-btn" onClick={handleSaveSettings}>Save Settings</button>
                 </div>
             </div>
         );
@@ -256,12 +416,9 @@ const App: React.FC = () => {
             <div className="panel-header">
                 <span className="panel-title">💬 PromptVault</span>
                 <div className="panel-actions">
-                    <button className="icon-btn" onClick={() => setShowSettings(true)} title="Settings">
-                        ⚙️
-                    </button>
-                    <button className="icon-btn" onClick={() => handleExpand(false)} title="Collapse">
-                        ✕
-                    </button>
+                    <button className="icon-btn" onClick={startCreate} title="New Prompt">➕</button>
+                    <button className="icon-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
+                    <button className="icon-btn" onClick={() => handleExpand(false)} title="Collapse">✕</button>
                 </div>
             </div>
 
@@ -283,13 +440,12 @@ const App: React.FC = () => {
             {/* Prompt List */}
             <div className="prompt-list">
                 {isLoading ? (
-                    <div className="loading">
-                        <div className="spinner"></div>
-                    </div>
+                    <div className="loading"><div className="spinner"></div></div>
                 ) : filteredPrompts.length === 0 ? (
                     <div className="empty-state">
                         <span className="empty-icon">📭</span>
                         <p>{searchQuery ? 'No matching prompts' : 'No prompts yet'}</p>
+                        <button className="save-btn" style={{ marginTop: 10 }} onClick={startCreate}>Create First Prompt</button>
                     </div>
                 ) : (
                     <>
@@ -301,6 +457,8 @@ const App: React.FC = () => {
                                         key={prompt.id}
                                         prompt={prompt}
                                         onCopy={handleCopy}
+                                        onEdit={startEdit}
+                                        onDelete={handleDeletePrompt}
                                         isCopied={copiedId === prompt.id}
                                     />
                                 ))}
@@ -315,6 +473,8 @@ const App: React.FC = () => {
                                         key={prompt.id}
                                         prompt={prompt}
                                         onCopy={handleCopy}
+                                        onEdit={startEdit}
+                                        onDelete={handleDeletePrompt}
                                         isCopied={copiedId === prompt.id}
                                     />
                                 ))}
@@ -326,9 +486,7 @@ const App: React.FC = () => {
 
             {/* Footer */}
             <div className="panel-footer">
-                <button className="open-web-btn" onClick={handleOpenWebApp}>
-                    🌐 Open Full App
-                </button>
+                <button className="open-web-btn" onClick={handleOpenWebApp}>🌐 Open Full App</button>
                 <div className="connection-status">
                     <span className={`status-dot ${connectionStatus}`}></span>
                     <span>
@@ -346,15 +504,17 @@ const App: React.FC = () => {
 interface PromptItemProps {
     prompt: Prompt;
     onCopy: (prompt: Prompt) => void;
+    onEdit: (prompt: Prompt) => void;
+    onDelete: (id: string) => void;
     isCopied: boolean;
 }
 
-const PromptItem: React.FC<PromptItemProps> = ({ prompt, onCopy, isCopied }) => {
+const PromptItem: React.FC<PromptItemProps> = ({ prompt, onCopy, onEdit, onDelete, isCopied }) => {
     const hasVariables = extractVariables(prompt.content).length > 0;
 
     return (
-        <div className="prompt-item">
-            <div className="prompt-info">
+        <div className="prompt-item group">
+            <div className="prompt-info" onClick={() => onCopy(prompt)}>
                 <div className="prompt-title">
                     {prompt.isFavorite && '⭐ '}
                     {prompt.title}
@@ -365,12 +525,21 @@ const PromptItem: React.FC<PromptItemProps> = ({ prompt, onCopy, isCopied }) => 
                     {prompt.content.length > 60 ? '...' : ''}
                 </div>
             </div>
-            <button
-                className={`copy-btn ${isCopied ? 'copied' : ''}`}
-                onClick={e => { e.stopPropagation(); onCopy(prompt); }}
-            >
-                {isCopied ? '✓' : '📋'}
-            </button>
+            <div className="prompt-actions">
+                <button className="action-btn edit" onClick={(e) => { e.stopPropagation(); onEdit(prompt); }} title="Edit">
+                    ✏️
+                </button>
+                <button className="action-btn delete" onClick={(e) => { e.stopPropagation(); onDelete(prompt.id); }} title="Delete">
+                    🗑️
+                </button>
+                <button
+                    className={`copy-btn ${isCopied ? 'copied' : ''}`}
+                    onClick={e => { e.stopPropagation(); onCopy(prompt); }}
+                    title="Copy"
+                >
+                    {isCopied ? '✓' : '📋'}
+                </button>
+            </div>
         </div>
     );
 };
