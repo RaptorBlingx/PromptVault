@@ -1,0 +1,68 @@
+{
+    "name": "promptvault-bubble",
+    "version": "1.0.0",
+    "description": "PromptVault Floating Bubble - Quick access to your prompts",
+    "author": "PromptVault",
+    "main": "dist/main.js",
+    "scripts": {
+        "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\"",
+        "dev:main": "tsc -w",
+        "dev:renderer": "vite",
+        "build": "npm run build:renderer && npm run build:main",
+        "build:main": "tsc",
+        "build:renderer": "vite build",
+        "start": "electron .",
+        "pack": "electron-builder --dir",
+        "dist": "electron-builder",
+        "dist:win": "electron-builder --win"
+    },
+    "dependencies": {
+        "electron-store": "^8.1.0"
+    },
+    "devDependencies": {
+        "@types/node": "^22.10.1",
+        "@types/react": "^18.2.64",
+        "@types/react-dom": "^18.2.21",
+        "@vitejs/plugin-react": "^4.2.1",
+        "concurrently": "^9.1.0",
+        "electron": "^33.2.0",
+        "electron-builder": "^25.1.8",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "typescript": "^5.7.2",
+        "vite": "^5.1.5"
+    },
+    "build": {
+        "appId": "com.promptvault.bubble",
+        "productName": "PromptVault Bubble",
+        "directories": {
+            "output": "release"
+        },
+        "files": [
+            "dist/**/*",
+            "renderer/**/*"
+        ],
+        "win": {
+            "target": [
+                {
+                    "target": "nsis",
+                    "arch": [
+                        "x64"
+                    ]
+                },
+                {
+                    "target": "portable",
+                    "arch": [
+                        "x64"
+                    ]
+                }
+            ],
+            "icon": "assets/icon.png"
+        },
+        "nsis": {
+            "oneClick": false,
+            "perMachine": false,
+            "allowToChangeInstallationDirectory": true
+        }
+    }
+}

@@ -1,0 +1,458 @@
+/* ============================================
+   PromptVault Bubble - Styles
+   ============================================ */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --color-bg: #1a1a2e;
+  --color-bg-secondary: #16213e;
+  --color-bg-tertiary: #0f172a;
+  --color-accent: #7c3aed;
+  --color-accent-hover: #8b5cf6;
+  --color-text: #e2e8f0;
+  --color-text-secondary: #94a3b8;
+  --color-text-tertiary: #64748b;
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-success: #10b981;
+  --color-error: #ef4444;
+  
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+  
+  --shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--color-text);
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ----- Bubble Button ----- */
+
+.bubble-button {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, var(--color-accent), #a855f7);
+  border: none;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  -webkit-app-region: drag;
+}
+
+.bubble-button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 25px 60px rgba(124, 58, 237, 0.4);
+}
+
+.bubble-button:active {
+  cursor: grabbing;
+  transform: scale(0.98);
+}
+
+.bubble-icon {
+  font-size: 24px;
+  pointer-events: none;
+}
+
+/* ----- Expanded Panel ----- */
+
+.panel {
+  width: 100%;
+  height: 100%;
+  background: var(--color-bg);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+}
+
+.panel-header {
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  -webkit-app-region: drag;
+}
+
+.panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-actions {
+  display: flex;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+}
+
+.icon-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.icon-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text);
+}
+
+/* ----- Search Bar ----- */
+
+.search-container {
+  padding: 12px;
+  background: var(--color-bg-secondary);
+}
+
+.search-input {
+  width: 100%;
+  padding: 10px 12px;
+  padding-left: 36px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-tertiary);
+  color: var(--color-text);
+  font-size: 13px;
+  transition: border-color 0.15s ease;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.search-input::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+.search-wrapper {
+  position: relative;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-tertiary);
+  font-size: 14px;
+}
+
+/* ----- Prompt List ----- */
+
+.prompt-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.prompt-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.prompt-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.prompt-list::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+.prompt-item {
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  transition: background 0.15s ease;
+  margin-bottom: 4px;
+}
+
+.prompt-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.prompt-item:active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.prompt-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.prompt-title {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.prompt-preview {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.prompt-badges {
+  display: flex;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.copy-btn {
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: var(--color-accent);
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.copy-btn:hover {
+  background: var(--color-accent-hover);
+}
+
+.copy-btn.copied {
+  background: var(--color-success);
+}
+
+/* ----- Section Headers ----- */
+
+.section-header {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ----- Empty State ----- */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.empty-icon {
+  font-size: 40px;
+  opacity: 0.5;
+  margin-bottom: 12px;
+}
+
+/* ----- Footer ----- */
+
+.panel-footer {
+  padding: 10px 12px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.open-web-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.open-web-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text);
+}
+
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-dot.connected {
+  background: var(--color-success);
+  box-shadow: 0 0 8px var(--color-success);
+}
+
+.status-dot.disconnected {
+  background: var(--color-error);
+}
+
+.status-dot.checking {
+  background: var(--color-text-tertiary);
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ----- Settings Panel ----- */
+
+.settings-panel {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.settings-input {
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-tertiary);
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.settings-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.save-btn {
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: var(--color-accent);
+  color: white;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.save-btn:hover {
+  background: var(--color-accent-hover);
+}
+
+/* ----- Quick Create ----- */
+
+.quick-create {
+  padding: 12px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+}
+
+.quick-create-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-tertiary);
+  color: var(--color-text);
+  font-size: 13px;
+  resize: none;
+}
+
+.quick-create-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.quick-create-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* ----- Loading ----- */
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

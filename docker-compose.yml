@@ -4,6 +4,12 @@ services:
     container_name: promptvault
     restart: always
     ports:
-      - "2528:80"
+      - "2528:2528" # Web UI
+      - "2529:2529" # API Server
+    volumes:
+      - promptvault-data:/app/data # Persist SQLite database
     environment:
       - API_KEY=${API_KEY}
+
+volumes:
+  promptvault-data:

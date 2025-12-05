@@ -22,10 +22,24 @@ import {
   savePrompts,
   loadFolders,
   saveFolders,
+  loadPromptsAsync,
+  savePromptAsync,
+  deletePromptAsync,
+  loadFoldersAsync,
+  saveFolderAsync,
+  deleteFolderAsync,
+  migrateLocalStorageToApi,
   duplicatePrompt,
   exportData,
   importData,
+  importDataToApi,
 } from './services/storageService';
+import {
+  startConnectionMonitoring,
+  stopConnectionMonitoring,
+  onConnectionStatusChange,
+  ConnectionStatus,
+} from './services/apiService';
 
 // ----- Folder Modal -----
 interface FolderModalProps {
@@ -127,18 +141,51 @@ const AppContent: React.FC = () => {
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [sortOption, setSortOption] = useState<SortOption>(SortOption.NEWEST);
+  const [isLoading, setIsLoading] = useState(true);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('checking');
 
   // Modals
   const [folderModal, setFolderModal] = useState<{ isOpen: boolean; folder?: Folder | null }>({ isOpen: false });
   const [variableModal, setVariableModal] = useState<{ isOpen: boolean; content: string }>({ isOpen: false, content: '' });
 
-  // Load data
+  // Load data from API
   useEffect(() => {
-    setPrompts(loadPrompts());
-    setFolders(loadFolders());
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        // Try to migrate old localStorage data first
+        await migrateLocalStorageToApi();
+
+        // Load from API
+        const [loadedPrompts, loadedFolders] = await Promise.all([
+          loadPromptsAsync(),
+          loadFoldersAsync(),
+        ]);
+        setPrompts(loadedPrompts);
+        setFolders(loadedFolders);
+      } catch (error) {
+        console.error('Failed to load data from API:', error);
+        // Fall back to cache
+        setPrompts(loadPrompts());
+        setFolders(loadFolders());
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+
+    // Start connection monitoring
+    startConnectionMonitoring(30000);
+    const unsubscribe = onConnectionStatusChange(setConnectionStatus);
+
+    return () => {
+      stopConnectionMonitoring();
+      unsubscribe();
+    };
   }, []);
 
-  // Persist
+  // Persist to cache (for offline access)
   useEffect(() => { savePrompts(prompts); }, [prompts]);
   useEffect(() => { saveFolders(folders); }, [folders]);
 
@@ -170,23 +217,45 @@ const AppContent: React.FC = () => {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
-  const handleCreatePrompt = useCallback(() => {
+  const handleCreatePrompt = useCallback(async () => {
     const newPrompt = createDefaultPrompt(selectedFolderId);
     setPrompts(prev => [newPrompt, ...prev]);
     setSelectedPromptId(newPrompt.id);
     setIsEditing(true);
     setActiveView('LIST');
+
+    // Save to API in background
+    try {
+      await savePromptAsync(newPrompt);
+    } catch (error) {
+      console.error('Failed to save new prompt to API:', error);
+    }
   }, [selectedFolderId]);
 
-  const handleUpdatePrompt = useCallback((updated: Prompt) => {
+  const handleUpdatePrompt = useCallback(async (updated: Prompt) => {
     setPrompts(prev => prev.map(p => p.id === updated.id ? updated : p));
-  }, []);
 
-  const handleDeletePrompt = useCallback((id: string) => {
+    // Save to API in background
+    try {
+      await savePromptAsync(updated);
+    } catch (error) {
+      console.error('Failed to update prompt in API:', error);
+      addToast('Failed to sync changes', 'error');
+    }
+  }, [addToast]);
+
+  const handleDeletePrompt = useCallback(async (id: string) => {
     if (window.confirm('Delete this prompt?')) {
       setPrompts(prev => prev.filter(p => p.id !== id));
       if (selectedPromptId === id) setSelectedPromptId(null);
       addToast('Prompt deleted', 'info');
+
+      // Delete from API in background
+      try {
+        await deletePromptAsync(id);
+      } catch (error) {
+        console.error('Failed to delete prompt from API:', error);
+      }
     }
   }, [selectedPromptId, addToast]);
 
@@ -230,19 +299,32 @@ const AppContent: React.FC = () => {
     setFolderModal({ isOpen: true, folder: null });
   }, []);
 
-  const handleSaveFolder = useCallback((name: string, icon: string) => {
+  const handleSaveFolder = useCallback(async (name: string, icon: string) => {
     if (folderModal.folder) {
+      const updatedFolder = { ...folderModal.folder, name, icon };
       setFolders(prev => prev.map(f =>
-        f.id === folderModal.folder!.id ? { ...f, name, icon } : f
+        f.id === folderModal.folder!.id ? updatedFolder : f
       ));
+      // Update in API
+      try {
+        await saveFolderAsync(updatedFolder);
+      } catch (error) {
+        console.error('Failed to update folder in API:', error);
+      }
     } else {
       const newFolder = { ...createDefaultFolder(name), icon };
       setFolders(prev => [...prev, newFolder]);
+      // Save to API
+      try {
+        await saveFolderAsync(newFolder);
+      } catch (error) {
+        console.error('Failed to save folder to API:', error);
+      }
     }
     addToast(folderModal.folder ? 'Folder updated' : 'Folder created', 'success');
   }, [folderModal.folder, addToast]);
 
-  const handleDeleteFolder = useCallback((folderId: string) => {
+  const handleDeleteFolder = useCallback(async (folderId: string) => {
     if (window.confirm('Delete this folder? Prompts will be moved to "No Folder".')) {
       setFolders(prev => prev.filter(f => f.id !== folderId));
       setPrompts(prev => prev.map(p =>
@@ -250,6 +332,13 @@ const AppContent: React.FC = () => {
       ));
       if (selectedFolderId === folderId) setSelectedFolderId(null);
       addToast('Folder deleted', 'info');
+
+      // Delete from API
+      try {
+        await deleteFolderAsync(folderId);
+      } catch (error) {
+        console.error('Failed to delete folder from API:', error);
+      }
     }
   }, [selectedFolderId, addToast]);
 
