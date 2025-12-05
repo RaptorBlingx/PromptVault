@@ -32,7 +32,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
 }) => {
   const [formData, setFormData] = useState<Partial<Prompt>>({});
   const [isOptimizing, setIsOptimizing] = useState(false);
-  const [tagInput, setTagInput] = useState('');
+
   const [showVersions, setShowVersions] = useState(false);
 
   useEffect(() => {
@@ -48,7 +48,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
         folderId: null,
       });
     }
-    setTagInput('');
+
     setShowVersions(false);
   }, [prompt]);
 
@@ -120,19 +120,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
     }
   };
 
-  const handleAddTag = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && tagInput.trim()) {
-      e.preventDefault();
-      if (!formData.tags?.includes(tagInput.trim())) {
-        setFormData(prev => ({ ...prev, tags: [...(prev.tags || []), tagInput.trim()] }));
-      }
-      setTagInput('');
-    }
-  };
 
-  const removeTag = (tagToRemove: string) => {
-    setFormData(prev => ({ ...prev, tags: prev.tags?.filter(t => t !== tagToRemove) }));
-  };
 
   const handleCopy = async () => {
     if (!prompt?.content) return;
@@ -178,22 +166,15 @@ export const DetailView: React.FC<DetailViewProps> = ({
           borderBottom: '1px solid var(--color-border)',
           background: 'var(--color-bg-primary)',
         }}>
-          <input
-            type="text"
-            value={formData.title}
-            onChange={e => setFormData({ ...formData, title: e.target.value })}
-            placeholder="Prompt Title"
-            style={{
-              fontSize: 'var(--text-xl)',
-              fontWeight: 700,
-              color: 'var(--color-text-primary)',
-              background: 'transparent',
-              border: 'none',
-              outline: 'none',
-              flex: 1,
-              marginRight: 'var(--space-4)',
-            }}
-          />
+          <h2 style={{
+            fontSize: 'var(--text-xl)',
+            fontWeight: 700,
+            color: 'var(--color-text-primary)',
+            margin: 0,
+            flex: 1,
+          }}>
+            {prompt ? 'Edit Prompt' : 'New Prompt'}
+          </h2>
           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
             <button
               onClick={() => setIsEditing(false)}
@@ -269,7 +250,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
               </div>
             </div>
 
-            {/* Tags Input */}
+            {/* Title Input */}
             <div style={{ marginBottom: 'var(--space-4)' }}>
               <label style={{
                 display: 'block',
@@ -280,52 +261,20 @@ export const DetailView: React.FC<DetailViewProps> = ({
                 letterSpacing: '0.05em',
                 marginBottom: 'var(--space-1)',
               }}>
-                Tags
+                Prompt Title
               </label>
-              <div style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: 'var(--space-2)',
-                padding: 'var(--space-2)',
-                border: '1px solid var(--color-border)',
-                borderRadius: 'var(--radius-md)',
-                background: 'var(--color-bg-secondary)',
-              }}>
-                {formData.tags?.map(tag => (
-                  <span key={tag} className="tag">
-                    {tag}
-                    <button
-                      onClick={() => removeTag(tag)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        padding: 0,
-                        marginLeft: 4,
-                        color: 'inherit',
-                      }}
-                    >
-                      <Icons.X size={12} />
-                    </button>
-                  </span>
-                ))}
-                <input
-                  type="text"
-                  value={tagInput}
-                  onChange={e => setTagInput(e.target.value)}
-                  onKeyDown={handleAddTag}
-                  placeholder="Add tag..."
-                  style={{
-                    flex: 1,
-                    minWidth: 100,
-                    border: 'none',
-                    outline: 'none',
-                    background: 'transparent',
-                    fontSize: 'var(--text-sm)',
-                    color: 'var(--color-text-primary)',
-                  }}
-                />
-              </div>
+              <input
+                type="text"
+                value={formData.title}
+                onChange={e => setFormData({ ...formData, title: e.target.value })}
+                placeholder="Enter prompt title..."
+                className="input"
+                style={{
+                  width: '100%',
+                  fontSize: 'var(--text-base)',
+                  fontWeight: 600,
+                }}
+              />
             </div>
 
             {/* Content */}
