@@ -26,7 +26,6 @@
 | 🕐 **Version History** | Auto-saves last 5 versions with one-click restore |
 | 📌 **Pin to Top** | Keep important prompts visible |
 | ⭐ **Favorites** | Quick access to starred prompts |
-| 🤖 **AI Optimize** | Improve prompts using Gemini API |
 | 💾 **Import/Export** | Full JSON backup and restore |
 | 🐳 **Docker Ready** | Zero-touch self-hosting |
 
@@ -111,20 +110,6 @@ sudo ufw allow 2529/tcp
 cd PromptVault
 git pull
 docker compose down
-docker compose up -d --build
-```
-
-### With AI Optimization (Optional)
-
-Create a `.env` file in the project root:
-
-```bash
-GEMINI_API_KEY=your_gemini_api_key
-```
-
-Then rebuild:
-
-```bash
 docker compose up -d --build
 ```
 
@@ -236,7 +221,6 @@ Base URL: `http://YOUR_SERVER:2529`
 | DELETE | `/api/folders/:id` | Delete folder |
 | GET | `/api/export` | Export all data as JSON |
 | POST | `/api/import` | Import data from JSON |
-| POST | `/api/optimize` | AI-optimize prompt (requires Gemini API key) |
 
 ---
 
@@ -275,7 +259,6 @@ PromptVault/
 ├── components/             # React UI components
 ├── services/
 │   ├── apiService.ts       # API client with connection monitoring
-│   ├── geminiService.ts    # Gemini AI optimization (calls server API)
 │   └── storageService.ts   # Storage layer with API + cache
 ├── types.ts                # TypeScript type definitions
 ├── styles.css              # Design system (dark/light themes)
@@ -315,7 +298,6 @@ PromptVault/
 | **Icons** | Lucide React |
 | **Backend API** | Express.js, better-sqlite3 |
 | **Desktop App** | Electron |
-| **AI** | Google Gemini API |
 | **Deploy** | Docker, Nginx, Supervisor |
 
 ---

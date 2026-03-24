@@ -43,7 +43,6 @@ app.get('/', (_req, res) => {
             health: '/api/health',
             prompts: '/api/prompts',
             folders: '/api/folders',
-            optimize: '/api/optimize',
             import: '/api/import',
             export: '/api/export',
         },

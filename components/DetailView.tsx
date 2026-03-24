@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Prompt, Folder, extractVariables, PromptVersion } from '../types';
 import { Icons } from './Icon';
-import { optimizePromptContent } from '../services/geminiService';
 import { createPromptVersion } from '../services/storageService';
 import { copyToClipboard } from '../utils/clipboard';
 
@@ -31,7 +30,6 @@ export const DetailView: React.FC<DetailViewProps> = ({
   onNotify
 }) => {
   const [formData, setFormData] = useState<Partial<Prompt>>({});
-  const [isOptimizing, setIsOptimizing] = useState(false);
 
   const [showVersions, setShowVersions] = useState(false);
 
@@ -104,20 +102,6 @@ export const DetailView: React.FC<DetailViewProps> = ({
     onEdit(updatedPrompt);
     setIsEditing(false);
     onNotify('Prompt saved successfully', 'success');
-  };
-
-  const handleOptimize = async () => {
-    if (!formData.content) return;
-    setIsOptimizing(true);
-    try {
-      const optimized = await optimizePromptContent(formData.content);
-      setFormData(prev => ({ ...prev, content: optimized }));
-      onNotify('Prompt optimized by Gemini!', 'success');
-    } catch (e) {
-      onNotify('Failed to optimize. Check API key.', 'error');
-    } finally {
-      setIsOptimizing(false);
-    }
   };
 
 
@@ -294,19 +278,6 @@ export const DetailView: React.FC<DetailViewProps> = ({
                 }}>
                   Content
                 </label>
-                <button
-                  onClick={handleOptimize}
-                  disabled={isOptimizing || !formData.content}
-                  className="btn btn-ghost"
-                  style={{
-                    fontSize: 'var(--text-xs)',
-                    padding: 'var(--space-1) var(--space-2)',
-                    color: 'var(--color-accent)',
-                  }}
-                >
-                  <Icons.Sparkles size={14} />
-                  {isOptimizing ? 'Optimizing...' : 'AI Optimize'}
-                </button>
               </div>
               <textarea
                 value={formData.content}
