@@ -9,6 +9,7 @@ services:
     volumes:
       - promptvault-data:/app/data # Persist SQLite database
     environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - API_KEY=${API_KEY}
 
 volumes:

@@ -38,7 +38,9 @@
 | 🔍 **Instant Search** | Filter prompts as you type |
 | 📋 **One-Click Copy** | Copy prompts directly to clipboard |
 | 📊 **Variable Fill** | Fill `{{variables}}` before copying |
-| 🔄 **Real-time Sync** | Syncs with server automatically |
+| � **Pin & Favorites** | Filter by pinned or favorite prompts |
+| 🔔 **Toast Notifications** | Visual feedback for all actions |
+| �🔄 **Real-time Sync** | Syncs with server automatically |
 | 🌐 **Open Web App** | Quick launch to full web interface |
 
 ---
@@ -114,8 +116,15 @@ docker compose up -d --build
 
 ### With AI Optimization (Optional)
 
+Create a `.env` file in the project root:
+
 ```bash
-export API_KEY="your_gemini_api_key"
+GEMINI_API_KEY=your_gemini_api_key
+```
+
+Then rebuild:
+
+```bash
 docker compose up -d --build
 ```
 
@@ -179,11 +188,15 @@ This creates:
 |--------|--------|
 | **Toggle bubble** | Press `Ctrl+Shift+V` anywhere |
 | **Expand panel** | Click the bubble |
+| **Move bubble** | Click and drag the bubble |
 | **Search prompts** | Type in the search box |
-| **Copy prompt** | Click 📋 on any prompt |
+| **Filter prompts** | Use All / 📌 / ⭐ tabs |
+| **Copy prompt** | Click a prompt or 📋 button |
+| **Pin/Favorite** | Click 📌 or ⭐ on any prompt |
 | **Fill variables** | Prompts with `{{vars}}` show a fill dialog |
 | **Open web app** | Click "🌐 Open Full App" |
 | **Access settings** | Click ⚙️ or right-click tray icon |
+| **Close panels** | Press `Esc` (cascading) |
 | **Quit** | Right-click tray icon → Quit |
 
 ---
@@ -202,6 +215,7 @@ This creates:
 | Shortcut | Action |
 |----------|--------|
 | `Ctrl+Shift+V` | Toggle bubble visibility |
+| `Esc` | Close current panel (cascading) |
 
 ---
 
@@ -222,6 +236,7 @@ Base URL: `http://YOUR_SERVER:2529`
 | DELETE | `/api/folders/:id` | Delete folder |
 | GET | `/api/export` | Export all data as JSON |
 | POST | `/api/import` | Import data from JSON |
+| POST | `/api/optimize` | AI-optimize prompt (requires Gemini API key) |
 
 ---
 
@@ -260,6 +275,7 @@ PromptVault/
 ├── components/             # React UI components
 ├── services/
 │   ├── apiService.ts       # API client with connection monitoring
+│   ├── geminiService.ts    # Gemini AI optimization (calls server API)
 │   └── storageService.ts   # Storage layer with API + cache
 ├── types.ts                # TypeScript type definitions
 ├── styles.css              # Design system (dark/light themes)
