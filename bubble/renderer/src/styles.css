@@ -65,8 +65,8 @@ body,
   justify-content: center;
   box-shadow: var(--shadow);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
-  /* The button itself should capture clicks, so disable drag on it */
-  -webkit-app-region: no-drag;
+  /* Allow dragging the whole bubble — Electron still fires click on tap without movement */
+  -webkit-app-region: drag;
 }
 
 .bubble-button:hover {
