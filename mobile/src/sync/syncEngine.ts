@@ -45,6 +45,10 @@ class SyncEngine {
     return this.lastSyncTimestamp;
   }
 
+  private getServerIdentifier(record: { id: string; serverId: string }): string {
+    return record.serverId || `mobile-${record.id}`;
+  }
+
   async sync(): Promise<{ pushed: number; pulled: number; conflicts: number }> {
     if (this.isSyncing) {
       return { pushed: 0, pulled: 0, conflicts: 0 };
@@ -86,7 +90,7 @@ class SyncEngine {
 
   private toApiFormat(p: PromptRecord): Prompt {
     return {
-      id: p.serverId || p.id,
+      id: this.getServerIdentifier(p),
       title: p.title,
       content: p.content,
       tags: JSON.parse(p.tags || '[]'),
@@ -101,7 +105,7 @@ class SyncEngine {
 
   private folderToApi(f: FolderRecord): Folder {
     return {
-      id: f.serverId || f.id,
+      id: this.getServerIdentifier(f),
       name: f.name,
       icon: f.icon,
       color: f.color,
@@ -127,7 +131,7 @@ class SyncEngine {
         }));
         count++;
       } catch (error: any) {
-        const targetId = prompt.serverId || prompt.id;
+        const targetId = this.getServerIdentifier(prompt);
         if (error.status === 409 && targetId) {
           try {
             await api.updatePromptApi(targetId, this.toApiFormat(prompt));
@@ -220,7 +224,7 @@ class SyncEngine {
         }));
         count++;
       } catch (error: any) {
-        const targetId = folder.serverId || folder.id;
+        const targetId = this.getServerIdentifier(folder);
         if (error.status === 409 && targetId) {
           try {
             await api.updateFolderApi(targetId, this.folderToApi(folder));
@@ -474,7 +478,9 @@ class SyncEngine {
     this.retryCount++;
     setTimeout(() => {
       if (connectivity.isOnline()) {
-        this.sync().catch(() => undefined);
+        this.sync().catch((error) => {
+          console.warn('Retry sync failed:', error);
+        });
       }
     }, delay);
   }

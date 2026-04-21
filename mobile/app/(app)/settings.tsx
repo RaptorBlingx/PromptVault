@@ -62,7 +62,16 @@ export default function SettingsScreen() {
     const connectivityStatus = await connectivity.check();
     if (connectivityStatus === 'online') {
       await triggerSync();
-      Alert.alert('Server URL Updated', `Connected to: ${url || '(default)'}`);
+      const { error, pendingChanges } = useSyncStore.getState();
+      if (!error && pendingChanges === 0) {
+        Alert.alert('Server URL Updated', `Connected to: ${url || '(default)'}`);
+        return;
+      }
+
+      Alert.alert(
+        'Server Reachable',
+        error || `${pendingChanges} change${pendingChanges === 1 ? '' : 's'} still need to sync.`,
+      );
       return;
     }
 
