@@ -18,6 +18,13 @@ export type SyncPhase = 'idle' | 'pushing' | 'pulling' | 'resolving' | 'error';
 
 type SyncListener = (phase: SyncPhase, detail?: string) => void;
 
+interface SyncFailure {
+  entityType: 'prompt' | 'folder';
+  entityId: string;
+  action: 'create' | 'update' | 'delete';
+  message: string;
+}
+
 class SyncEngine {
   private isSyncing = false;
   private listeners: Set<SyncListener> = new Set();
@@ -69,6 +76,7 @@ class SyncEngine {
       console.error('Sync failed:', error);
       this.emit('error', (error as Error).message);
       this.scheduleRetry();
+      throw error;
     } finally {
       this.isSyncing = false;
     }
@@ -78,7 +86,7 @@ class SyncEngine {
 
   private toApiFormat(p: PromptRecord): Prompt {
     return {
-      id: p.serverId,
+      id: p.serverId || p.id,
       title: p.title,
       content: p.content,
       tags: JSON.parse(p.tags || '[]'),
@@ -93,7 +101,7 @@ class SyncEngine {
 
   private folderToApi(f: FolderRecord): Folder {
     return {
-      id: f.serverId,
+      id: f.serverId || f.id,
       name: f.name,
       icon: f.icon,
       color: f.color,
@@ -103,22 +111,40 @@ class SyncEngine {
 
   private async pushChanges(): Promise<number> {
     let count = 0;
+    const failures: SyncFailure[] = [];
     const allPrompts = await getAllPrompts();
     const allFolders = await getAllFolders();
 
     // Push created prompts
     for (const prompt of allPrompts.filter((p) => p.syncStatus === 'created')) {
       try {
-        await api.createPromptApi(this.toApiFormat(prompt));
-        await updatePrompt(prompt.id, (p) => ({ ...p, syncStatus: 'synced', lastSyncedAt: Date.now() }));
+        const created = await api.createPromptApi(this.toApiFormat(prompt));
+        await updatePrompt(prompt.id, (p) => ({
+          ...p,
+          serverId: created.id,
+          syncStatus: 'synced',
+          lastSyncedAt: Date.now(),
+        }));
         count++;
       } catch (error: any) {
-        if (error.status === 409) {
-          await api.updatePromptApi(prompt.serverId, this.toApiFormat(prompt));
-          await updatePrompt(prompt.id, (p) => ({ ...p, syncStatus: 'synced', lastSyncedAt: Date.now() }));
-          count++;
+        const targetId = prompt.serverId || prompt.id;
+        if (error.status === 409 && targetId) {
+          try {
+            await api.updatePromptApi(targetId, this.toApiFormat(prompt));
+            await updatePrompt(prompt.id, (p) => ({
+              ...p,
+              serverId: targetId,
+              syncStatus: 'synced',
+              lastSyncedAt: Date.now(),
+            }));
+            count++;
+          } catch (updateError: any) {
+            console.error('Failed to recover created prompt after conflict:', updateError);
+            failures.push(this.toFailure('prompt', prompt.id, 'create', updateError));
+          }
         } else {
           console.error('Failed to push created prompt:', error);
+          failures.push(this.toFailure('prompt', prompt.id, 'create', error));
         }
       }
     }
@@ -126,27 +152,55 @@ class SyncEngine {
     // Push updated prompts
     for (const prompt of allPrompts.filter((p) => p.syncStatus === 'updated')) {
       try {
+        if (!prompt.serverId) {
+          const created = await api.createPromptApi(this.toApiFormat(prompt));
+          await updatePrompt(prompt.id, (p) => ({
+            ...p,
+            serverId: created.id,
+            syncStatus: 'synced',
+            lastSyncedAt: Date.now(),
+          }));
+          count++;
+          continue;
+        }
         await api.updatePromptApi(prompt.serverId, this.toApiFormat(prompt));
         await updatePrompt(prompt.id, (p) => ({ ...p, syncStatus: 'synced', lastSyncedAt: Date.now() }));
         count++;
       } catch (error: any) {
         if (error.status === 404) {
-          await api.createPromptApi(this.toApiFormat(prompt));
-          await updatePrompt(prompt.id, (p) => ({ ...p, syncStatus: 'synced', lastSyncedAt: Date.now() }));
-          count++;
+          try {
+            const created = await api.createPromptApi(this.toApiFormat(prompt));
+            await updatePrompt(prompt.id, (p) => ({
+              ...p,
+              serverId: created.id,
+              syncStatus: 'synced',
+              lastSyncedAt: Date.now(),
+            }));
+            count++;
+          } catch (createError: any) {
+            console.error('Failed to recreate updated prompt:', createError);
+            failures.push(this.toFailure('prompt', prompt.id, 'update', createError));
+          }
         } else {
           console.error('Failed to push updated prompt:', error);
+          failures.push(this.toFailure('prompt', prompt.id, 'update', error));
         }
       }
     }
 
     // Push deleted prompts
     for (const prompt of allPrompts.filter((p) => p.syncStatus === 'deleted')) {
+      if (!prompt.serverId) {
+        await deletePromptPermanently(prompt.id);
+        count++;
+        continue;
+      }
       try {
         await api.deletePromptApi(prompt.serverId);
       } catch (error: any) {
         if (error.status !== 404) {
           console.error('Failed to push deleted prompt:', error);
+          failures.push(this.toFailure('prompt', prompt.id, 'delete', error));
           continue;
         }
       }
@@ -157,16 +211,33 @@ class SyncEngine {
     // Push created folders
     for (const folder of allFolders.filter((f) => f.syncStatus === 'created')) {
       try {
-        await api.createFolderApi(this.folderToApi(folder));
-        await updateFolder(folder.id, (f) => ({ ...f, syncStatus: 'synced', lastSyncedAt: Date.now() }));
+        const created = await api.createFolderApi(this.folderToApi(folder));
+        await updateFolder(folder.id, (f) => ({
+          ...f,
+          serverId: created.id,
+          syncStatus: 'synced',
+          lastSyncedAt: Date.now(),
+        }));
         count++;
       } catch (error: any) {
-        if (error.status === 409) {
-          await api.updateFolderApi(folder.serverId, this.folderToApi(folder));
-          await updateFolder(folder.id, (f) => ({ ...f, syncStatus: 'synced', lastSyncedAt: Date.now() }));
-          count++;
+        const targetId = folder.serverId || folder.id;
+        if (error.status === 409 && targetId) {
+          try {
+            await api.updateFolderApi(targetId, this.folderToApi(folder));
+            await updateFolder(folder.id, (f) => ({
+              ...f,
+              serverId: targetId,
+              syncStatus: 'synced',
+              lastSyncedAt: Date.now(),
+            }));
+            count++;
+          } catch (updateError: any) {
+            console.error('Failed to recover created folder after conflict:', updateError);
+            failures.push(this.toFailure('folder', folder.id, 'create', updateError));
+          }
         } else {
           console.error('Failed to push created folder:', error);
+          failures.push(this.toFailure('folder', folder.id, 'create', error));
         }
       }
     }
@@ -174,32 +245,64 @@ class SyncEngine {
     // Push updated folders
     for (const folder of allFolders.filter((f) => f.syncStatus === 'updated')) {
       try {
+        if (!folder.serverId) {
+          const created = await api.createFolderApi(this.folderToApi(folder));
+          await updateFolder(folder.id, (f) => ({
+            ...f,
+            serverId: created.id,
+            syncStatus: 'synced',
+            lastSyncedAt: Date.now(),
+          }));
+          count++;
+          continue;
+        }
         await api.updateFolderApi(folder.serverId, this.folderToApi(folder));
         await updateFolder(folder.id, (f) => ({ ...f, syncStatus: 'synced', lastSyncedAt: Date.now() }));
         count++;
       } catch (error: any) {
         if (error.status === 404) {
-          await api.createFolderApi(this.folderToApi(folder));
-          await updateFolder(folder.id, (f) => ({ ...f, syncStatus: 'synced', lastSyncedAt: Date.now() }));
-          count++;
+          try {
+            const created = await api.createFolderApi(this.folderToApi(folder));
+            await updateFolder(folder.id, (f) => ({
+              ...f,
+              serverId: created.id,
+              syncStatus: 'synced',
+              lastSyncedAt: Date.now(),
+            }));
+            count++;
+          } catch (createError: any) {
+            console.error('Failed to recreate updated folder:', createError);
+            failures.push(this.toFailure('folder', folder.id, 'update', createError));
+          }
         } else {
           console.error('Failed to push updated folder:', error);
+          failures.push(this.toFailure('folder', folder.id, 'update', error));
         }
       }
     }
 
     // Push deleted folders
     for (const folder of allFolders.filter((f) => f.syncStatus === 'deleted')) {
+      if (!folder.serverId) {
+        await deleteFolderPermanently(folder.id);
+        count++;
+        continue;
+      }
       try {
         await api.deleteFolderApi(folder.serverId);
       } catch (error: any) {
         if (error.status !== 404) {
           console.error('Failed to push deleted folder:', error);
+          failures.push(this.toFailure('folder', folder.id, 'delete', error));
           continue;
         }
       }
       await deleteFolderPermanently(folder.id);
       count++;
+    }
+
+    if (failures.length > 0) {
+      throw new Error(this.formatFailures(failures));
     }
 
     return count;
@@ -339,6 +442,29 @@ class SyncEngine {
     }
   }
 
+  private toFailure(
+    entityType: SyncFailure['entityType'],
+    entityId: string,
+    action: SyncFailure['action'],
+    error: any,
+  ): SyncFailure {
+    return {
+      entityType,
+      entityId,
+      action,
+      message: error?.response?.error || error?.message || 'Unknown sync error',
+    };
+  }
+
+  private formatFailures(failures: SyncFailure[]): string {
+    const summary = failures
+      .slice(0, 3)
+      .map((failure) => `${failure.action} ${failure.entityType} ${failure.entityId}: ${failure.message}`)
+      .join('; ');
+    const remainder = failures.length > 3 ? ` (+${failures.length - 3} more)` : '';
+    return `Failed to sync ${failures.length} change${failures.length === 1 ? '' : 's'}: ${summary}${remainder}`;
+  }
+
   private scheduleRetry() {
     if (this.retryCount >= this.maxRetries) {
       console.warn('Max sync retries reached');
@@ -348,7 +474,7 @@ class SyncEngine {
     this.retryCount++;
     setTimeout(() => {
       if (connectivity.isOnline()) {
-        this.sync();
+        this.sync().catch(() => undefined);
       }
     }, delay);
   }

@@ -28,16 +28,19 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
     if (get().phase !== 'idle') return;
     set({ status: 'syncing', error: null });
     try {
-      const result = await syncEngine.sync();
+      await syncEngine.sync();
+      const pendingChanges = await syncEngine.getPendingChangesCount();
       set({
-        status: 'synced',
-        lastSyncedAt: Date.now(),
-        pendingChanges: 0,
+        status: connectivity.isOnline() ? 'synced' : 'offline',
+        lastSyncedAt: syncEngine.getLastSyncTimestamp(),
+        pendingChanges,
         error: null,
       });
     } catch (error) {
+      const pendingChanges = await syncEngine.getPendingChangesCount();
       set({
         status: 'error',
+        pendingChanges,
         error: (error as Error).message,
       });
     }
