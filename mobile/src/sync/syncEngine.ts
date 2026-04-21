@@ -466,7 +466,10 @@ class SyncEngine {
     }
 
     const summary = Array.from(grouped.entries())
-      .map(([key, count]) => `${count} ${key}${count === 1 ? '' : 's'}`)
+      .map(([key, count]) => {
+        const [action, entityType] = key.split(' ');
+        return `${count} ${entityType}${count === 1 ? '' : 's'} (${action})`;
+      })
       .join(', ');
 
     return `Failed to sync ${failures.length} change${failures.length === 1 ? '' : 's'} (${summary}). Check the server and try again.`;

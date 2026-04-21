@@ -71,7 +71,7 @@ export default function SettingsScreen() {
 
         Alert.alert(
           'Server Reachable',
-          error || `${pendingChanges} change${pendingChanges === 1 ? '' : 's'} still need${pendingChanges === 1 ? 's' : ''} to sync.`,
+          error || `${pendingChanges} pending change${pendingChanges === 1 ? '' : 's'} remain unsynced.`,
         );
         return;
       }
