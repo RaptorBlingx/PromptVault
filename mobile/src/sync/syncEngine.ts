@@ -459,15 +459,24 @@ class SyncEngine {
   }
 
   private formatFailures(failures: SyncFailure[]): string {
-    const grouped = new Map<string, number>();
+    const grouped = new Map<string, { action: SyncFailure['action']; entityType: SyncFailure['entityType']; count: number }>();
     for (const failure of failures) {
-      const key = `${failure.action} ${failure.entityType}`;
-      grouped.set(key, (grouped.get(key) || 0) + 1);
+      const key = `${failure.action}:${failure.entityType}`;
+      const existing = grouped.get(key);
+      if (existing) {
+        existing.count += 1;
+        continue;
+      }
+
+      grouped.set(key, {
+        action: failure.action,
+        entityType: failure.entityType,
+        count: 1,
+      });
     }
 
-    const summary = Array.from(grouped.entries())
-      .map(([key, count]) => {
-        const [action, entityType] = key.split(' ');
+    const summary = Array.from(grouped.values())
+      .map(({ action, entityType, count }) => {
         return `${count} ${entityType}${count === 1 ? '' : 's'} (${action})`;
       })
       .join(', ');

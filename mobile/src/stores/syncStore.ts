@@ -38,7 +38,7 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
         status = 'offline';
       } else if (pendingChanges > 0) {
         status = 'error';
-        error = `${pendingChanges} pending change${pendingChanges === 1 ? '' : 's'} remain unsynced. Try again in a moment.`;
+        error = `${pendingChanges} pending change${pendingChanges === 1 ? '' : 's'} remain unsynced. Changes will sync automatically when the connection improves, or you can tap Sync Now.`;
       }
 
       set({

@@ -83,7 +83,7 @@ export default function SettingsScreen() {
     } catch (error) {
       Alert.alert(
         'Unable to Update Server URL',
-        (error as Error).message || 'Something went wrong while updating the server settings.',
+        (error as Error).message || 'Failed to update the server URL. Check the address and try again.',
       );
     }
   };
