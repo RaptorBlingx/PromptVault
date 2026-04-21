@@ -56,29 +56,36 @@ export default function SettingsScreen() {
   ];
 
   const handleSaveServerUrl = async () => {
-    const url = serverUrlInput.trim().replace(/\/$/, '');
-    await setServerUrl(url);
+    try {
+      const url = serverUrlInput.trim().replace(/\/$/, '');
+      await setServerUrl(url);
 
-    const connectivityStatus = await connectivity.check();
-    if (connectivityStatus === 'online') {
-      await triggerSync();
-      const { error, pendingChanges } = useSyncStore.getState();
-      if (!error && pendingChanges === 0) {
-        Alert.alert('Server URL Updated', `Connected to: ${url || '(default)'}`);
+      const connectivityStatus = await connectivity.check();
+      if (connectivityStatus === 'online') {
+        await triggerSync();
+        const { error, pendingChanges } = useSyncStore.getState();
+        if (!error && pendingChanges === 0) {
+          Alert.alert('Server URL Updated', `Connected to: ${url || '(default)'}`);
+          return;
+        }
+
+        Alert.alert(
+          'Server Reachable',
+          error || `${pendingChanges} change${pendingChanges === 1 ? '' : 's'} still need${pendingChanges === 1 ? 's' : ''} to sync.`,
+        );
         return;
       }
 
       Alert.alert(
-        'Server Reachable',
-        error || `${pendingChanges} change${pendingChanges === 1 ? '' : 's'} still need to sync.`,
+        'Server URL Saved',
+        `Saved ${url || '(default)'} but the app could not reach the server yet.`,
       );
-      return;
+    } catch (error) {
+      Alert.alert(
+        'Unable to Update Server URL',
+        (error as Error).message || 'Something went wrong while updating the server settings.',
+      );
     }
-
-    Alert.alert(
-      'Server URL Saved',
-      `Saved ${url || '(default)'} but the app could not reach the server yet.`,
-    );
   };
 
   return (

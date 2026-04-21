@@ -196,7 +196,6 @@ class SyncEngine {
     for (const prompt of allPrompts.filter((p) => p.syncStatus === 'deleted')) {
       if (!prompt.serverId) {
         await deletePromptPermanently(prompt.id);
-        count++;
         continue;
       }
       try {
@@ -289,7 +288,6 @@ class SyncEngine {
     for (const folder of allFolders.filter((f) => f.syncStatus === 'deleted')) {
       if (!folder.serverId) {
         await deleteFolderPermanently(folder.id);
-        count++;
         continue;
       }
       try {
@@ -461,12 +459,17 @@ class SyncEngine {
   }
 
   private formatFailures(failures: SyncFailure[]): string {
-    const summary = failures
-      .slice(0, 3)
-      .map((failure) => `${failure.action} ${failure.entityType} ${failure.entityId}: ${failure.message}`)
-      .join('; ');
-    const remainder = failures.length > 3 ? ` (+${failures.length - 3} more)` : '';
-    return `Failed to sync ${failures.length} change${failures.length === 1 ? '' : 's'}: ${summary}${remainder}`;
+    const grouped = new Map<string, number>();
+    for (const failure of failures) {
+      const key = `${failure.action} ${failure.entityType}`;
+      grouped.set(key, (grouped.get(key) || 0) + 1);
+    }
+
+    const summary = Array.from(grouped.entries())
+      .map(([key, count]) => `${count} ${key}${count === 1 ? '' : 's'}`)
+      .join(', ');
+
+    return `Failed to sync ${failures.length} change${failures.length === 1 ? '' : 's'} (${summary}). Check the server and try again.`;
   }
 
   private scheduleRetry() {

@@ -31,13 +31,21 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
       await syncEngine.sync();
       const pendingChanges = await syncEngine.getPendingChangesCount();
       const isOnline = connectivity.isOnline();
+      let status: SyncStatus = 'synced';
+      let error: string | null = null;
+
+      if (!isOnline) {
+        status = 'offline';
+      } else if (pendingChanges > 0) {
+        status = 'error';
+        error = `${pendingChanges} change${pendingChanges === 1 ? '' : 's'} still need${pendingChanges === 1 ? 's' : ''} to sync. Try again in a moment.`;
+      }
+
       set({
-        status: !isOnline ? 'offline' : pendingChanges === 0 ? 'synced' : 'error',
+        status,
         lastSyncedAt: syncEngine.getLastSyncTimestamp(),
         pendingChanges,
-        error: !isOnline || pendingChanges === 0
-          ? null
-          : 'Some changes are still waiting to sync.',
+        error,
       });
     } catch (error) {
       const pendingChanges = await syncEngine.getPendingChangesCount();
