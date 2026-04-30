@@ -11,14 +11,14 @@ import {
   StyleSheet,
   TouchableOpacity,
   RefreshControl,
-  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../../src/theme';
-import { spacing, borderRadius, shadows } from '../../src/theme/spacing';
+import { spacing, shadows } from '../../src/theme/spacing';
 import { fontSize, fontWeight } from '../../src/theme/typography';
 import {
-  getAllPrompts, getAllFolders, createPrompt, updatePrompt,
+  getAllPrompts, getAllFolders, createPrompt,
   type PromptRecord, type FolderRecord,
 } from '../../src/db';
 import { PromptCard } from '../../src/components/PromptCard';
@@ -27,7 +27,6 @@ import { SearchBar } from '../../src/components/SearchBar';
 import { useSyncStore } from '../../src/stores/syncStore';
 import { useSettingsStore } from '../../src/stores/settingsStore';
 import { Prompt, Folder, SortOption } from '../../src/shared/types';
-import { generateId, createDefaultPrompt } from '../../src/shared/utils';
 import * as Clipboard from 'expo-clipboard';
 
 export default function PromptListScreen() {
@@ -43,6 +42,7 @@ export default function PromptListScreen() {
 
   const sortOption = useSettingsStore((s) => s.sortOption);
   const triggerSync = useSyncStore((s) => s.triggerSync);
+  const lastSyncedAt = useSyncStore((s) => s.lastSyncedAt);
 
   // Load data from AsyncStorage
   const loadData = useCallback(async () => {
@@ -62,12 +62,26 @@ export default function PromptListScreen() {
     loadData();
   }, [loadData]);
 
+  useFocusEffect(
+    useCallback(() => {
+      void loadData();
+    }, [loadData]),
+  );
+
+  useEffect(() => {
+    if (lastSyncedAt) {
+      void loadData();
+    }
+  }, [lastSyncedAt, loadData]);
+
   // Pull to refresh — sync then reload
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
       await triggerSync();
-    } catch (_) {}
+    } catch (error) {
+      console.warn('Refresh sync failed:', error);
+    }
     await loadData();
     setRefreshing(false);
   }, [triggerSync, loadData]);
@@ -148,29 +162,10 @@ export default function PromptListScreen() {
     await Clipboard.setStringAsync(prompt.content);
   }, []);
 
-  // Delete prompt (soft delete)
-  const handleDelete = useCallback(async (prompt: PromptRecord) => {
-    Alert.alert('Delete Prompt', `Delete "${prompt.title}"?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          await updatePrompt(prompt.id, (p) => ({
-            ...p,
-            syncStatus: 'deleted',
-            updatedAt: Date.now(),
-          }));
-          loadData();
-        },
-      },
-    ]);
-  }, [loadData]);
-
   // Create folder
   const handleCreateFolder = useCallback(async () => {
     // Alert.prompt is iOS-only, skip on Android
-  }, [loadData]);
+  }, []);
 
   // Convert record to card-friendly format
   const toCardData = (p: PromptRecord): Prompt => ({

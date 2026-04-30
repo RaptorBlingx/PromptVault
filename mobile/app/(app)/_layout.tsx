@@ -9,17 +9,15 @@ import {
   TouchableOpacity,
   StyleSheet,
   Animated,
-  Dimensions,
   Pressable,
 } from 'react-native';
 import { Slot, useRouter, usePathname } from 'expo-router';
 import { useTheme } from '../../src/theme';
-import { spacing, borderRadius } from '../../src/theme/spacing';
+import { spacing } from '../../src/theme/spacing';
 import { fontSize, fontWeight } from '../../src/theme/typography';
 import { useSyncStore } from '../../src/stores/syncStore';
 
 const DRAWER_WIDTH = 280;
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function AppLayout() {
   const { colors } = useTheme();

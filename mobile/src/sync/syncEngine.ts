@@ -60,32 +60,31 @@ class SyncEngine {
     }
 
     this.isSyncing = true;
-    let pushed = 0;
-    let pulled = 0;
-    let conflicts = 0;
 
     try {
       this.emit('pushing');
-      pushed = await this.pushChanges();
+      const pushed = await this.pushChanges();
 
       this.emit('pulling');
       const pullResult = await this.pullChanges();
-      pulled = pullResult.pulled;
-      conflicts = pullResult.conflicts;
 
       this.lastSyncTimestamp = Date.now();
       this.retryCount = 0;
       this.emit('idle');
+      return {
+        pushed,
+        pulled: pullResult.pulled,
+        conflicts: pullResult.conflicts,
+      };
     } catch (error) {
       console.error('Sync failed:', error);
-      this.emit('error', (error as Error).message);
+      const message = error instanceof Error ? error.message : 'Unknown sync error';
+      this.emit('error', message);
       this.scheduleRetry();
-      throw error;
+      throw (error instanceof Error ? error : new Error(message));
     } finally {
       this.isSyncing = false;
     }
-
-    return { pushed, pulled, conflicts };
   }
 
   private toApiFormat(
@@ -199,7 +198,6 @@ class SyncEngine {
       syncedFolders.map((folder) => [folder.id, this.getServerIdentifier(folder)]),
     );
 
-    // Push created prompts
     for (const prompt of allPrompts.filter((p) => p.syncStatus === 'created')) {
       try {
         const created = await api.createPromptApi(this.toApiFormat(prompt, folderServerIdByLocalId));
@@ -233,7 +231,6 @@ class SyncEngine {
       }
     }
 
-    // Push updated prompts
     for (const prompt of allPrompts.filter((p) => p.syncStatus === 'updated')) {
       try {
         if (!prompt.serverId) {
@@ -272,7 +269,6 @@ class SyncEngine {
       }
     }
 
-    // Push deleted prompts
     for (const prompt of allPrompts.filter((p) => p.syncStatus === 'deleted')) {
       if (!prompt.serverId) {
         await deletePromptPermanently(prompt.id);
@@ -291,7 +287,6 @@ class SyncEngine {
       count++;
     }
 
-    // Push deleted folders
     for (const folder of allFolders.filter((f) => f.syncStatus === 'deleted')) {
       if (!folder.serverId) {
         await deleteFolderPermanently(folder.id);
@@ -326,7 +321,6 @@ class SyncEngine {
       api.fetchFolders(),
     ]);
 
-    // Reconcile folders
     const localFolders = (await getAllFolders()).filter((f) => f.syncStatus !== 'deleted');
     const localFolderMap = new Map(localFolders.map((f) => [this.getServerIdentifier(f), f]));
     const folderLocalIdByServerId = new Map<string, string>();
@@ -366,13 +360,12 @@ class SyncEngine {
     }
 
     for (const [, orphan] of localFolderMap) {
-      if (orphan.syncStatus === 'synced') {
+      if (orphan.syncStatus === 'synced' && orphan.serverId) {
         await deleteFolderPermanently(orphan.id);
         pulled++;
       }
     }
 
-    // Reconcile prompts
     const localPrompts = (await getAllPrompts()).filter((p) => p.syncStatus !== 'deleted');
     const localPromptMap = new Map(localPrompts.map((p) => [this.getServerIdentifier(p), p]));
 
@@ -402,6 +395,7 @@ class SyncEngine {
         if (remotePrompt.updatedAt > local.updatedAt) {
           await updatePrompt(local.id, (p) => ({
             ...p,
+            serverId: remotePrompt.id,
             title: remotePrompt.title,
             content: remotePrompt.content,
             tags: JSON.stringify(remotePrompt.tags),
@@ -413,11 +407,14 @@ class SyncEngine {
             lastSyncedAt: Date.now(),
           }));
           pulled++;
+        } else if (!local.serverId) {
+          await updatePrompt(local.id, (p) => ({ ...p, serverId: remotePrompt.id }));
         }
       } else if (local.syncStatus === 'updated') {
         if (remotePrompt.updatedAt > local.updatedAt) {
           await updatePrompt(local.id, (p) => ({
             ...p,
+            serverId: remotePrompt.id,
             title: remotePrompt.title,
             content: remotePrompt.content,
             tags: JSON.stringify(remotePrompt.tags),
@@ -437,7 +434,7 @@ class SyncEngine {
     }
 
     for (const [, orphan] of localPromptMap) {
-      if (orphan.syncStatus === 'synced') {
+      if (orphan.syncStatus === 'synced' && orphan.serverId) {
         await deletePromptPermanently(orphan.id);
         pulled++;
       }
@@ -492,9 +489,7 @@ class SyncEngine {
     }
 
     const summary = Array.from(grouped.values())
-      .map(({ action, entityType, count }) => {
-        return `${count} ${entityType}${count === 1 ? '' : 's'} (${action})`;
-      })
+      .map(({ action, entityType, count }) => `${count} ${entityType}${count === 1 ? '' : 's'} (${action})`)
       .join(', ');
 
     return `Failed to sync ${failures.length} change${failures.length === 1 ? '' : 's'} (${summary}). Check the server and try again.`;
@@ -524,5 +519,4 @@ class SyncEngine {
   }
 }
 
-// Singleton
 export const syncEngine = new SyncEngine();

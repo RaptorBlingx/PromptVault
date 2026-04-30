@@ -8,8 +8,27 @@ import { Prompt, Folder } from '../shared/types';
 const DEFAULT_SERVER_URL = 'http://localhost:2529';
 let serverUrl = DEFAULT_SERVER_URL;
 
+export function normalizeServerUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) {
+    return DEFAULT_SERVER_URL;
+  }
+
+  const withProtocol = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : `http://${trimmed}`;
+
+  let normalized = withProtocol.replace(/\/+$/, '');
+
+  if (normalized.endsWith('/api')) {
+    normalized = normalized.slice(0, -4);
+  }
+
+  return normalized;
+}
+
 export function setServerUrl(url: string) {
-  serverUrl = url.replace(/\/$/, '');
+  serverUrl = normalizeServerUrl(url);
 }
 
 export function getServerUrl(): string {

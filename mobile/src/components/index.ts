@@ -1,5 +1,5 @@
 // Components barrel export
-export { Toast, showToast } from './Toast';
+export { Toast } from './Toast';
 export { SyncStatusBar } from './SyncStatusBar';
 export { SearchBar } from './SearchBar';
 export { PromptCard } from './PromptCard';

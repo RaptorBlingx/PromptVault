@@ -6,13 +6,13 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTheme } from '../theme';
-import { spacing, borderRadius } from '../theme/spacing';
+import { spacing } from '../theme/spacing';
 import { fontSize, fontWeight } from '../theme/typography';
 import { useSyncStore } from '../stores/syncStore';
 
 export function SyncStatusBar() {
-  const { colors, isDark } = useTheme();
-  const { status, pendingChanges, lastSyncedAt, error, triggerSync } = useSyncStore();
+  const { colors } = useTheme();
+  const { status, pendingChanges, error, triggerSync } = useSyncStore();
 
   // Don't show anything when synced and online
   if (status === 'synced' && pendingChanges === 0) return null;

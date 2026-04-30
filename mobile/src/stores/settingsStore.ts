@@ -5,7 +5,11 @@
 import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
 import { Theme, SortOption } from '../shared/types';
-import { setServerUrl, getServerUrl } from '../api/client';
+import {
+  setServerUrl,
+  normalizeServerUrl,
+} from '../api/client';
+import { markAllRecordsForResync } from '../db';
 
 const SETTINGS_KEY = 'promptvault_settings';
 
@@ -70,9 +74,18 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   setServerUrl: async (url) => {
-    setServerUrl(url);
-    set({ serverUrl: url });
-    await persistSettings({ serverUrl: url });
+    const normalizedUrl = normalizeServerUrl(url);
+    const previousUrl = normalizeServerUrl(get().serverUrl || '');
+
+    if (normalizedUrl !== previousUrl) {
+      // When switching backend endpoints, force local records to be re-pushed so
+      // a wrong or empty server does not cause local content to be pruned.
+      await markAllRecordsForResync();
+    }
+
+    setServerUrl(normalizedUrl);
+    set({ serverUrl: normalizedUrl });
+    await persistSettings({ serverUrl: normalizedUrl });
   },
 
   setDefaultFolderId: async (id) => {
@@ -82,14 +95,18 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   initialize: async () => {
     const saved = await loadSettings();
-    if (saved.serverUrl) {
-      setServerUrl(saved.serverUrl);
-    }
+
+    const savedServerUrl = saved.serverUrl
+      ? normalizeServerUrl(saved.serverUrl)
+      : 'http://localhost:2529';
+
+    setServerUrl(savedServerUrl);
+
     set({
       theme: saved.theme || 'system',
       sortOption: saved.sortOption || SortOption.NEWEST,
       showWordCount: saved.showWordCount ?? true,
-      serverUrl: saved.serverUrl || 'http://localhost:2529',
+      serverUrl: savedServerUrl,
       defaultFolderId: saved.defaultFolderId || null,
     });
   },

@@ -27,6 +27,7 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
   triggerSync: async () => {
     if (get().phase !== 'idle') return;
     set({ status: 'syncing', error: null });
+
     try {
       await syncEngine.sync();
       const pendingChanges = await syncEngine.getPendingChangesCount();
@@ -48,19 +49,31 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
         error,
       });
     } catch (error) {
-      const pendingChanges = await syncEngine.getPendingChangesCount();
+      const pendingChanges = await syncEngine
+        .getPendingChangesCount()
+        .catch(() => get().pendingChanges);
+
       set({
-        status: 'error',
+        status: connectivity.isOnline() ? 'error' : 'offline',
         pendingChanges,
-        error: (error as Error).message,
+        error: error instanceof Error ? error.message : 'Unknown sync error',
       });
     }
   },
 
   updateConnectivity: (status: ConnectivityStatus) => {
+    const current = get();
+    let nextStatus: SyncStatus = current.status;
+
+    if (status === 'offline') {
+      nextStatus = 'offline';
+    } else if (current.phase === 'idle' && current.status === 'offline' && current.pendingChanges === 0) {
+      nextStatus = 'synced';
+    }
+
     set({
       connectivity: status,
-      status: status === 'offline' ? 'offline' : get().status,
+      status: nextStatus,
     });
   },
 
@@ -68,9 +81,9 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
     const newState: Partial<SyncStoreState> = { phase };
     if (phase === 'error' && detail) {
       newState.error = detail;
-      newState.status = 'error';
+      newState.status = connectivity.isOnline() ? 'error' : 'offline';
     } else if (phase === 'idle') {
-      newState.status = connectivity.isOnline() ? 'synced' : 'offline';
+      newState.status = connectivity.isOnline() ? get().status === 'syncing' ? 'synced' : get().status : 'offline';
     } else {
       newState.status = 'syncing';
     }

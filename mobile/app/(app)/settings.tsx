@@ -1,8 +1,8 @@
 // ============================================
-// Settings Screen — theme, sync, auth, about
+// Settings Screen - theme, sync, auth, about
 // ============================================
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,13 +12,19 @@ import {
   Switch,
   TextInput,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useTheme } from '../../src/theme';
 import { spacing, borderRadius } from '../../src/theme/spacing';
 import { fontSize, fontWeight } from '../../src/theme/typography';
 import { useSettingsStore } from '../../src/stores/settingsStore';
 import { useSyncStore } from '../../src/stores/syncStore';
-import { connectivity } from '../../src/sync';
+import {
+  checkHealth,
+  normalizeServerUrl,
+  setServerUrl as setApiClientServerUrl,
+} from '../../src/api/client';
 
 type ThemeOption = 'system' | 'light' | 'dark';
 import { SortOption } from '../../src/shared/types';
@@ -41,11 +47,13 @@ export default function SettingsScreen() {
   const triggerSync = useSyncStore((s) => s.triggerSync);
 
   const [serverUrlInput, setServerUrlInput] = useState(serverUrl);
+  const [isSavingServerUrl, setIsSavingServerUrl] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
 
   const themeOptions: { key: ThemeOption; label: string }[] = [
-    { key: 'system', label: '🖥 System' },
-    { key: 'light', label: '☀️ Light' },
-    { key: 'dark', label: '🌙 Dark' },
+    { key: 'system', label: 'System' },
+    { key: 'light', label: 'Light' },
+    { key: 'dark', label: 'Dark' },
   ];
 
   const sortOptions: { key: SortOption; label: string }[] = [
@@ -55,200 +63,282 @@ export default function SettingsScreen() {
     { key: SortOption.PINNED, label: 'Pinned First' },
   ];
 
-  const handleSaveServerUrl = async () => {
+  const syncStatusLabel = (() => {
+    switch (syncStatus) {
+      case 'synced':
+        return 'Synced';
+      case 'syncing':
+        return 'Syncing...';
+      case 'offline':
+        return 'Offline';
+      default:
+        return 'Error';
+    }
+  })();
+
+  const getApiPortFallbackUrl = useCallback((url: string): string | null => {
     try {
-      const url = serverUrlInput.trim().replace(/\/$/, '');
-      await setServerUrl(url);
+      const parsed = new URL(url);
+      if (parsed.port !== '2528') {
+        return null;
+      }
+      parsed.port = '2529';
+      return parsed.toString().replace(/\/$/, '');
+    } catch {
+      return null;
+    }
+  }, []);
 
-      const connectivityStatus = await connectivity.check();
-      if (connectivityStatus === 'online') {
-        await triggerSync();
-        const { error, pendingChanges } = useSyncStore.getState();
-        if (!error && pendingChanges === 0) {
-          Alert.alert('Server URL Updated', `Connected to: ${url || '(default)'}`);
-          return;
-        }
+  const runSyncAndReport = useCallback(
+    async (url: string, connectedTitle: string) => {
+      await triggerSync();
+      const { error, pendingChanges: remainingChanges } = useSyncStore.getState();
 
-        Alert.alert(
-          'Server Reachable',
-          error || `${pendingChanges} pending change${pendingChanges === 1 ? '' : 's'} remain unsynced.`,
-        );
+      if (!error && remainingChanges === 0) {
+        Alert.alert(connectedTitle, `Connected to: ${url}`);
         return;
       }
 
       Alert.alert(
-        'Server URL Saved',
-        `Saved ${url || '(default)'} but the app could not reach the server yet.`,
+        'Server Reachable',
+        error || `${remainingChanges} pending change${remainingChanges === 1 ? '' : 's'} remain unsynced.`,
       );
+    },
+    [triggerSync],
+  );
+
+  const handleSaveServerUrl = useCallback(async () => {
+    if (isSavingServerUrl) {
+      return;
+    }
+
+    const normalizedUrl = normalizeServerUrl(serverUrlInput);
+    setIsSavingServerUrl(true);
+
+    try {
+      await setServerUrl(normalizedUrl);
+      setServerUrlInput(normalizedUrl);
+
+      try {
+        await checkHealth();
+        await runSyncAndReport(normalizedUrl, 'Server Connected');
+        return;
+      } catch (initialError) {
+        const fallbackUrl = getApiPortFallbackUrl(normalizedUrl);
+
+        if (fallbackUrl && fallbackUrl !== normalizedUrl) {
+          setApiClientServerUrl(fallbackUrl);
+          try {
+            await checkHealth();
+            await setServerUrl(fallbackUrl);
+            setServerUrlInput(fallbackUrl);
+            await runSyncAndReport(fallbackUrl, 'Server URL Adjusted');
+            return;
+          } catch {
+            setApiClientServerUrl(normalizedUrl);
+          }
+        }
+
+        const errorMessage =
+          initialError instanceof Error
+            ? initialError.message
+            : 'Unknown network error';
+
+        Alert.alert(
+          'Unable to Reach API',
+          `Could not connect to ${normalizedUrl}/api/health.\n\n${errorMessage}\n\nUse your API endpoint, usually port 2529.`,
+        );
+      }
     } catch (error) {
       Alert.alert(
         'Unable to Update Server URL',
-        (error as Error).message || 'Failed to update the server URL. Check the address and try again.',
+        error instanceof Error
+          ? error.message
+          : 'Failed to update the server URL. Check the address and try again.',
       );
+    } finally {
+      setIsSavingServerUrl(false);
     }
-  };
+  }, [
+    getApiPortFallbackUrl,
+    isSavingServerUrl,
+    runSyncAndReport,
+    serverUrlInput,
+    setServerUrl,
+  ]);
 
   return (
-    <ScrollView
+    <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: colors.bgPrimary }]}
-      contentContainerStyle={styles.content}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
     >
-      {/* Appearance */}
-      <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Appearance</Text>
-      <View style={[styles.card, { backgroundColor: colors.bgSecondary, borderColor: colors.border }]}>
-        <Text style={[styles.label, { color: colors.textSecondary }]}>Theme</Text>
-        <View style={styles.optionRow}>
-          {themeOptions.map((opt) => (
-            <TouchableOpacity
-              key={opt.key}
-              onPress={() => setTheme(opt.key)}
-              style={[
-                styles.optionChip,
-                {
-                  backgroundColor: theme === opt.key ? colors.accent : colors.bgTertiary,
-                  borderColor: theme === opt.key ? colors.accent : colors.border,
-                },
-              ]}
-            >
-              <Text
-                style={{
-                  color: theme === opt.key ? '#ffffff' : colors.textSecondary,
-                  fontSize: fontSize.sm,
-                  fontWeight: fontWeight.medium,
-                }}
+      <ScrollView
+        ref={scrollRef}
+        style={styles.container}
+        contentContainerStyle={[styles.content, { paddingBottom: spacing[10] }]}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
+        <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Appearance</Text>
+        <View style={[styles.card, { backgroundColor: colors.bgSecondary, borderColor: colors.border }]}>
+          <Text style={[styles.label, { color: colors.textSecondary }]}>Theme</Text>
+          <View style={styles.optionRow}>
+            {themeOptions.map((opt) => (
+              <TouchableOpacity
+                key={opt.key}
+                onPress={() => void setTheme(opt.key)}
+                style={[
+                  styles.optionChip,
+                  {
+                    backgroundColor: theme === opt.key ? colors.accent : colors.bgTertiary,
+                    borderColor: theme === opt.key ? colors.accent : colors.border,
+                  },
+                ]}
               >
-                {opt.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <Text
+                  style={{
+                    color: theme === opt.key ? '#ffffff' : colors.textSecondary,
+                    fontSize: fontSize.sm,
+                    fontWeight: fontWeight.medium,
+                  }}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          <View style={styles.switchRow}>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Show Word Count</Text>
+            <Switch
+              value={showWordCount}
+              onValueChange={(value) => void setShowWordCount(value)}
+              trackColor={{ false: colors.border, true: colors.accent }}
+            />
+          </View>
         </View>
 
-        <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
-        <View style={styles.switchRow}>
-          <Text style={[styles.label, { color: colors.textSecondary }]}>Show Word Count</Text>
-          <Switch
-            value={showWordCount}
-            onValueChange={setShowWordCount}
-            trackColor={{ false: colors.border, true: colors.accent }}
-          />
-        </View>
-      </View>
-
-      {/* Sort */}
-      <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Sorting</Text>
-      <View style={[styles.card, { backgroundColor: colors.bgSecondary, borderColor: colors.border }]}>
-        <View style={styles.optionRow}>
-          {sortOptions.map((opt) => (
-            <TouchableOpacity
-              key={opt.key}
-              onPress={() => setSortOption(opt.key)}
-              style={[
-                styles.optionChip,
-                {
-                  backgroundColor: sortOption === opt.key ? colors.accent : colors.bgTertiary,
-                  borderColor: sortOption === opt.key ? colors.accent : colors.border,
-                },
-              ]}
-            >
-              <Text
-                style={{
-                  color: sortOption === opt.key ? '#ffffff' : colors.textSecondary,
-                  fontSize: fontSize.sm,
-                  fontWeight: fontWeight.medium,
-                }}
+        <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Sorting</Text>
+        <View style={[styles.card, { backgroundColor: colors.bgSecondary, borderColor: colors.border }]}>
+          <View style={styles.optionRow}>
+            {sortOptions.map((opt) => (
+              <TouchableOpacity
+                key={opt.key}
+                onPress={() => setSortOption(opt.key)}
+                style={[
+                  styles.optionChip,
+                  {
+                    backgroundColor: sortOption === opt.key ? colors.accent : colors.bgTertiary,
+                    borderColor: sortOption === opt.key ? colors.accent : colors.border,
+                  },
+                ]}
               >
-                {opt.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      {/* Sync */}
-      <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Sync</Text>
-      <View style={[styles.card, { backgroundColor: colors.bgSecondary, borderColor: colors.border }]}>
-        <View style={styles.infoRow}>
-          <Text style={[styles.label, { color: colors.textSecondary }]}>Status</Text>
-          <Text style={[styles.infoValue, { color: colors.textPrimary }]}>
-            {syncStatus === 'synced' ? '✅ Synced' :
-             syncStatus === 'syncing' ? '🔄 Syncing...' :
-             syncStatus === 'offline' ? '📵 Offline' :
-             '❌ Error'}
-          </Text>
+                <Text
+                  style={{
+                    color: sortOption === opt.key ? '#ffffff' : colors.textSecondary,
+                    fontSize: fontSize.sm,
+                    fontWeight: fontWeight.medium,
+                  }}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
-        <View style={[styles.divider, { backgroundColor: colors.border }]} />
+        <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Sync</Text>
+        <View style={[styles.card, { backgroundColor: colors.bgSecondary, borderColor: colors.border }]}>
+          <View style={styles.infoRow}>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Status</Text>
+            <Text style={[styles.infoValue, { color: colors.textPrimary }]}>{syncStatusLabel}</Text>
+          </View>
 
-        <View style={styles.infoRow}>
-          <Text style={[styles.label, { color: colors.textSecondary }]}>Pending Changes</Text>
-          <Text style={[styles.infoValue, { color: pendingChanges > 0 ? colors.warning : colors.textPrimary }]}>
-            {pendingChanges}
-          </Text>
-        </View>
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-        <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <View style={styles.infoRow}>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Pending Changes</Text>
+            <Text style={[styles.infoValue, { color: pendingChanges > 0 ? colors.warning : colors.textPrimary }]}>
+              {pendingChanges}
+            </Text>
+          </View>
 
-        <View style={styles.infoRow}>
-          <Text style={[styles.label, { color: colors.textSecondary }]}>Last Sync</Text>
-          <Text style={[styles.infoValue, { color: colors.textPrimary }]}>
-            {lastSyncedAt ? new Date(lastSyncedAt).toLocaleString() : 'Never'}
-          </Text>
-        </View>
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-        <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <View style={styles.infoRow}>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Last Sync</Text>
+            <Text style={[styles.infoValue, { color: colors.textPrimary }]}>
+              {lastSyncedAt ? new Date(lastSyncedAt).toLocaleString() : 'Never'}
+            </Text>
+          </View>
 
-        <TouchableOpacity
-          onPress={() => triggerSync()}
-          disabled={syncStatus === 'syncing'}
-          style={styles.actionRow}
-        >
-          <Text style={[styles.actionText, { color: syncStatus === 'syncing' ? colors.textTertiary : colors.accent }]}>
-            Sync Now
-          </Text>
-        </TouchableOpacity>
-      </View>
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-      {/* Server */}
-      <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Server</Text>
-      <View style={[styles.card, { backgroundColor: colors.bgSecondary, borderColor: colors.border }]}>
-        <Text style={[styles.label, { color: colors.textSecondary }]}>Server URL</Text>
-        <View style={styles.serverRow}>
-          <TextInput
-            style={[styles.serverInput, { color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.bgTertiary }]}
-            value={serverUrlInput}
-            onChangeText={setServerUrlInput}
-            placeholder="http://your-server:2529"
-            placeholderTextColor={colors.textTertiary}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-          />
           <TouchableOpacity
-            onPress={handleSaveServerUrl}
-            style={[styles.saveUrlButton, { backgroundColor: colors.accent }]}
+            onPress={() => void triggerSync()}
+            disabled={syncStatus === 'syncing'}
+            style={styles.actionRow}
           >
-            <Text style={styles.saveUrlText}>Save</Text>
+            <Text style={[styles.actionText, { color: syncStatus === 'syncing' ? colors.textTertiary : colors.accent }]}>
+              Sync Now
+            </Text>
           </TouchableOpacity>
         </View>
-      </View>
 
-      {/* About */}
-      <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>About</Text>
-      <View style={[styles.card, { backgroundColor: colors.bgSecondary, borderColor: colors.border }]}>
-        <View style={styles.infoRow}>
-          <Text style={[styles.label, { color: colors.textSecondary }]}>Version</Text>
-          <Text style={[styles.infoValue, { color: colors.textPrimary }]}>1.0.0</Text>
+        <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Server</Text>
+        <View style={[styles.card, { backgroundColor: colors.bgSecondary, borderColor: colors.border }]}>
+          <Text style={[styles.label, { color: colors.textSecondary }]}>Server URL</Text>
+          <View style={styles.serverRow}>
+            <TextInput
+              style={[styles.serverInput, { color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.bgTertiary }]}
+              value={serverUrlInput}
+              onChangeText={setServerUrlInput}
+              placeholder="http://your-server:2529"
+              placeholderTextColor={colors.textTertiary}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              returnKeyType="done"
+              onFocus={() => {
+                setTimeout(() => {
+                  scrollRef.current?.scrollToEnd({ animated: true });
+                }, 150);
+              }}
+            />
+            <TouchableOpacity
+              onPress={() => void handleSaveServerUrl()}
+              disabled={isSavingServerUrl}
+              style={[
+                styles.saveUrlButton,
+                {
+                  backgroundColor: isSavingServerUrl ? colors.textTertiary : colors.accent,
+                },
+              ]}
+            >
+              <Text style={styles.saveUrlText}>{isSavingServerUrl ? 'Saving...' : 'Save'}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-        <View style={[styles.divider, { backgroundColor: colors.border }]} />
-        <View style={styles.infoRow}>
-          <Text style={[styles.label, { color: colors.textSecondary }]}>Platform</Text>
-          <Text style={[styles.infoValue, { color: colors.textPrimary }]}>React Native + Expo</Text>
-        </View>
-      </View>
 
-      <View style={{ height: spacing[8] }} />
-    </ScrollView>
+        <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>About</Text>
+        <View style={[styles.card, { backgroundColor: colors.bgSecondary, borderColor: colors.border }]}>
+          <View style={styles.infoRow}>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Version</Text>
+            <Text style={[styles.infoValue, { color: colors.textPrimary }]}>1.0.0</Text>
+          </View>
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <View style={styles.infoRow}>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Platform</Text>
+            <Text style={[styles.infoValue, { color: colors.textPrimary }]}>React Native + Expo</Text>
+          </View>
+        </View>
+
+        <View style={{ height: spacing[8] }} />
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

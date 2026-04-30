@@ -23,7 +23,7 @@ import {
   Folder,
   MAX_VERSIONS,
 } from '../shared/types';
-import { hasVariables, extractVariables } from '../shared/variables';
+import { extractVariables } from '../shared/variables';
 import { countWords, countCharacters, generateId } from '../shared/utils';
 
 interface PromptEditorProps {

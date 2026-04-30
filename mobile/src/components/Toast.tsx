@@ -3,7 +3,7 @@
 // ============================================
 
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
+import { Text, StyleSheet, Animated } from 'react-native';
 import { useTheme } from '../theme';
 import { borderRadius, spacing } from '../theme/spacing';
 import { fontSize, fontWeight } from '../theme/typography';

@@ -170,3 +170,40 @@ export async function createSyncLog(data: Omit<SyncLogRecord, 'id'>): Promise<Sy
   await saveAll(SYNC_LOG_KEY, trimmed);
   return record;
 }
+
+// ----- Sync Utilities -----
+
+export async function markAllRecordsForResync(): Promise<void> {
+  const now = Date.now();
+
+  const prompts = await getAllPrompts();
+  const rebasedPrompts = prompts.map((p) => {
+    if (p.syncStatus === 'deleted') {
+      return p;
+    }
+
+    return {
+      ...p,
+      serverId: '',
+      syncStatus: 'created',
+      lastSyncedAt: null,
+      updatedAt: now,
+    };
+  });
+  await saveAll(PROMPTS_KEY, rebasedPrompts);
+
+  const folders = await getAllFolders();
+  const rebasedFolders = folders.map((f) => {
+    if (f.syncStatus === 'deleted') {
+      return f;
+    }
+
+    return {
+      ...f,
+      serverId: '',
+      syncStatus: 'created',
+      lastSyncedAt: null,
+    };
+  });
+  await saveAll(FOLDERS_KEY, rebasedFolders);
+}

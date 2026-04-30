@@ -31,7 +31,6 @@ export function FolderList({
   onSelectFolder,
   onCreateFolder,
   onEditFolder,
-  onDeleteFolder,
 }: FolderListProps) {
   const { colors } = useTheme();
 
