@@ -7,7 +7,9 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Slot, useRouter } from 'expo-router';
 import { ThemeProvider, useTheme } from '../src/theme';
 import { useSettingsStore } from '../src/stores/settingsStore';
+import { useSyncStore } from '../src/stores/syncStore';
 import { connectivityMonitor } from '../src/sync/connectivityMonitor';
+import { syncEngine } from '../src/sync/syncEngine';
 import { registerBackgroundSync } from '../src/sync/backgroundSync';
 import { SyncStatusBar } from '../src/components/SyncStatusBar';
 import { Toast, ToastData } from '../src/components/Toast';
@@ -26,6 +28,7 @@ function RootLayoutNav() {
   useEffect(() => {
     async function init() {
       await useSettingsStore.getState().initialize();
+      await useSyncStore.getState().refreshPendingCount();
       connectivityMonitor.start();
       registerBackgroundSync();
       setReady(true);
@@ -34,6 +37,24 @@ function RootLayoutNav() {
 
     return () => {
       connectivityMonitor.stop();
+    };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribeConnectivity = connectivityMonitor.subscribe((status) => {
+      const store = useSyncStore.getState();
+      store.updateConnectivity(status);
+      if (status === 'online') {
+        store.triggerSync().catch(() => undefined);
+      }
+    });
+    const unsubscribeSync = syncEngine.subscribe((phase, detail) => {
+      useSyncStore.getState().updatePhase(phase, detail);
+    });
+
+    return () => {
+      unsubscribeConnectivity();
+      unsubscribeSync();
     };
   }, []);
 

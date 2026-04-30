@@ -18,6 +18,7 @@ import { spacing, borderRadius } from '../../src/theme/spacing';
 import { fontSize, fontWeight } from '../../src/theme/typography';
 import { useSettingsStore } from '../../src/stores/settingsStore';
 import { useSyncStore } from '../../src/stores/syncStore';
+import { connectivity } from '../../src/sync';
 
 type ThemeOption = 'system' | 'light' | 'dark';
 import { SortOption } from '../../src/shared/types';
@@ -54,10 +55,37 @@ export default function SettingsScreen() {
     { key: SortOption.PINNED, label: 'Pinned First' },
   ];
 
-  const handleSaveServerUrl = () => {
-    const url = serverUrlInput.trim().replace(/\/$/, '');
-    setServerUrl(url);
-    Alert.alert('Server URL Updated', `Set to: ${url || '(default)'}`);
+  const handleSaveServerUrl = async () => {
+    try {
+      const url = serverUrlInput.trim().replace(/\/$/, '');
+      await setServerUrl(url);
+
+      const connectivityStatus = await connectivity.check();
+      if (connectivityStatus === 'online') {
+        await triggerSync();
+        const { error, pendingChanges } = useSyncStore.getState();
+        if (!error && pendingChanges === 0) {
+          Alert.alert('Server URL Updated', `Connected to: ${url || '(default)'}`);
+          return;
+        }
+
+        Alert.alert(
+          'Server Reachable',
+          error || `${pendingChanges} pending change${pendingChanges === 1 ? '' : 's'} remain unsynced.`,
+        );
+        return;
+      }
+
+      Alert.alert(
+        'Server URL Saved',
+        `Saved ${url || '(default)'} but the app could not reach the server yet.`,
+      );
+    } catch (error) {
+      Alert.alert(
+        'Unable to Update Server URL',
+        (error as Error).message || 'Failed to update the server URL. Check the address and try again.',
+      );
+    }
   };
 
   return (

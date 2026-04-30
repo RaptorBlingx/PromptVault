@@ -28,16 +28,30 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
     if (get().phase !== 'idle') return;
     set({ status: 'syncing', error: null });
     try {
-      const result = await syncEngine.sync();
+      await syncEngine.sync();
+      const pendingChanges = await syncEngine.getPendingChangesCount();
+      const isOnline = connectivity.isOnline();
+      let status: SyncStatus = 'synced';
+      let error: string | null = null;
+
+      if (!isOnline) {
+        status = 'offline';
+      } else if (pendingChanges > 0) {
+        status = 'error';
+        error = `${pendingChanges} pending change${pendingChanges === 1 ? '' : 's'} remain unsynced. Changes will sync automatically when the connection improves, or you can tap Sync Now.`;
+      }
+
       set({
-        status: 'synced',
-        lastSyncedAt: Date.now(),
-        pendingChanges: 0,
-        error: null,
+        status,
+        lastSyncedAt: syncEngine.getLastSyncTimestamp(),
+        pendingChanges,
+        error,
       });
     } catch (error) {
+      const pendingChanges = await syncEngine.getPendingChangesCount();
       set({
         status: 'error',
+        pendingChanges,
         error: (error as Error).message,
       });
     }
