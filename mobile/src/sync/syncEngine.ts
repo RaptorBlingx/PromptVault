@@ -88,7 +88,10 @@ class SyncEngine {
     return { pushed, pulled, conflicts };
   }
 
-  private toApiFormat(p: PromptRecord): Prompt {
+  private toApiFormat(
+    p: PromptRecord,
+    folderServerIdByLocalId: Map<string, string> = new Map(),
+  ): Prompt {
     return {
       id: this.getServerIdentifier(p),
       title: p.title,
@@ -96,7 +99,7 @@ class SyncEngine {
       tags: JSON.parse(p.tags || '[]'),
       isFavorite: p.isFavorite,
       isPinned: p.isPinned,
-      folderId: p.folderId,
+      folderId: p.folderId ? folderServerIdByLocalId.get(p.folderId) || p.folderId : null,
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
       versions: JSON.parse(p.versions || '[]'),
@@ -119,99 +122,7 @@ class SyncEngine {
     const allPrompts = await getAllPrompts();
     const allFolders = await getAllFolders();
 
-    // Push created prompts
-    for (const prompt of allPrompts.filter((p) => p.syncStatus === 'created')) {
-      try {
-        const created = await api.createPromptApi(this.toApiFormat(prompt));
-        await updatePrompt(prompt.id, (p) => ({
-          ...p,
-          serverId: created.id,
-          syncStatus: 'synced',
-          lastSyncedAt: Date.now(),
-        }));
-        count++;
-      } catch (error: any) {
-        const targetId = this.getServerIdentifier(prompt);
-        if (error.status === 409 && targetId) {
-          try {
-            await api.updatePromptApi(targetId, this.toApiFormat(prompt));
-            await updatePrompt(prompt.id, (p) => ({
-              ...p,
-              serverId: targetId,
-              syncStatus: 'synced',
-              lastSyncedAt: Date.now(),
-            }));
-            count++;
-          } catch (updateError: any) {
-            console.error('Failed to recover created prompt after conflict:', updateError);
-            failures.push(this.toFailure('prompt', prompt.id, 'create', updateError));
-          }
-        } else {
-          console.error('Failed to push created prompt:', error);
-          failures.push(this.toFailure('prompt', prompt.id, 'create', error));
-        }
-      }
-    }
-
-    // Push updated prompts
-    for (const prompt of allPrompts.filter((p) => p.syncStatus === 'updated')) {
-      try {
-        if (!prompt.serverId) {
-          const created = await api.createPromptApi(this.toApiFormat(prompt));
-          await updatePrompt(prompt.id, (p) => ({
-            ...p,
-            serverId: created.id,
-            syncStatus: 'synced',
-            lastSyncedAt: Date.now(),
-          }));
-          count++;
-          continue;
-        }
-        await api.updatePromptApi(prompt.serverId, this.toApiFormat(prompt));
-        await updatePrompt(prompt.id, (p) => ({ ...p, syncStatus: 'synced', lastSyncedAt: Date.now() }));
-        count++;
-      } catch (error: any) {
-        if (error.status === 404) {
-          try {
-            const created = await api.createPromptApi(this.toApiFormat(prompt));
-            await updatePrompt(prompt.id, (p) => ({
-              ...p,
-              serverId: created.id,
-              syncStatus: 'synced',
-              lastSyncedAt: Date.now(),
-            }));
-            count++;
-          } catch (createError: any) {
-            console.error('Failed to recreate updated prompt:', createError);
-            failures.push(this.toFailure('prompt', prompt.id, 'update', createError));
-          }
-        } else {
-          console.error('Failed to push updated prompt:', error);
-          failures.push(this.toFailure('prompt', prompt.id, 'update', error));
-        }
-      }
-    }
-
-    // Push deleted prompts
-    for (const prompt of allPrompts.filter((p) => p.syncStatus === 'deleted')) {
-      if (!prompt.serverId) {
-        await deletePromptPermanently(prompt.id);
-        continue;
-      }
-      try {
-        await api.deletePromptApi(prompt.serverId);
-      } catch (error: any) {
-        if (error.status !== 404) {
-          console.error('Failed to push deleted prompt:', error);
-          failures.push(this.toFailure('prompt', prompt.id, 'delete', error));
-          continue;
-        }
-      }
-      await deletePromptPermanently(prompt.id);
-      count++;
-    }
-
-    // Push created folders
+    // Push folders first so prompt folder references can satisfy the server FK.
     for (const folder of allFolders.filter((f) => f.syncStatus === 'created')) {
       try {
         const created = await api.createFolderApi(this.folderToApi(folder));
@@ -245,7 +156,6 @@ class SyncEngine {
       }
     }
 
-    // Push updated folders
     for (const folder of allFolders.filter((f) => f.syncStatus === 'updated')) {
       try {
         if (!folder.serverId) {
@@ -282,6 +192,103 @@ class SyncEngine {
           failures.push(this.toFailure('folder', folder.id, 'update', error));
         }
       }
+    }
+
+    const syncedFolders = await getAllFolders();
+    const folderServerIdByLocalId = new Map(
+      syncedFolders.map((folder) => [folder.id, this.getServerIdentifier(folder)]),
+    );
+
+    // Push created prompts
+    for (const prompt of allPrompts.filter((p) => p.syncStatus === 'created')) {
+      try {
+        const created = await api.createPromptApi(this.toApiFormat(prompt, folderServerIdByLocalId));
+        await updatePrompt(prompt.id, (p) => ({
+          ...p,
+          serverId: created.id,
+          syncStatus: 'synced',
+          lastSyncedAt: Date.now(),
+        }));
+        count++;
+      } catch (error: any) {
+        const targetId = this.getServerIdentifier(prompt);
+        if (error.status === 409 && targetId) {
+          try {
+            await api.updatePromptApi(targetId, this.toApiFormat(prompt, folderServerIdByLocalId));
+            await updatePrompt(prompt.id, (p) => ({
+              ...p,
+              serverId: targetId,
+              syncStatus: 'synced',
+              lastSyncedAt: Date.now(),
+            }));
+            count++;
+          } catch (updateError: any) {
+            console.error('Failed to recover created prompt after conflict:', updateError);
+            failures.push(this.toFailure('prompt', prompt.id, 'create', updateError));
+          }
+        } else {
+          console.error('Failed to push created prompt:', error);
+          failures.push(this.toFailure('prompt', prompt.id, 'create', error));
+        }
+      }
+    }
+
+    // Push updated prompts
+    for (const prompt of allPrompts.filter((p) => p.syncStatus === 'updated')) {
+      try {
+        if (!prompt.serverId) {
+          const created = await api.createPromptApi(this.toApiFormat(prompt, folderServerIdByLocalId));
+          await updatePrompt(prompt.id, (p) => ({
+            ...p,
+            serverId: created.id,
+            syncStatus: 'synced',
+            lastSyncedAt: Date.now(),
+          }));
+          count++;
+          continue;
+        }
+        await api.updatePromptApi(prompt.serverId, this.toApiFormat(prompt, folderServerIdByLocalId));
+        await updatePrompt(prompt.id, (p) => ({ ...p, syncStatus: 'synced', lastSyncedAt: Date.now() }));
+        count++;
+      } catch (error: any) {
+        if (error.status === 404) {
+          try {
+            const created = await api.createPromptApi(this.toApiFormat(prompt, folderServerIdByLocalId));
+            await updatePrompt(prompt.id, (p) => ({
+              ...p,
+              serverId: created.id,
+              syncStatus: 'synced',
+              lastSyncedAt: Date.now(),
+            }));
+            count++;
+          } catch (createError: any) {
+            console.error('Failed to recreate updated prompt:', createError);
+            failures.push(this.toFailure('prompt', prompt.id, 'update', createError));
+          }
+        } else {
+          console.error('Failed to push updated prompt:', error);
+          failures.push(this.toFailure('prompt', prompt.id, 'update', error));
+        }
+      }
+    }
+
+    // Push deleted prompts
+    for (const prompt of allPrompts.filter((p) => p.syncStatus === 'deleted')) {
+      if (!prompt.serverId) {
+        await deletePromptPermanently(prompt.id);
+        continue;
+      }
+      try {
+        await api.deletePromptApi(prompt.serverId);
+      } catch (error: any) {
+        if (error.status !== 404) {
+          console.error('Failed to push deleted prompt:', error);
+          failures.push(this.toFailure('prompt', prompt.id, 'delete', error));
+          continue;
+        }
+      }
+      await deletePromptPermanently(prompt.id);
+      count++;
     }
 
     // Push deleted folders
@@ -321,13 +328,14 @@ class SyncEngine {
 
     // Reconcile folders
     const localFolders = (await getAllFolders()).filter((f) => f.syncStatus !== 'deleted');
-    const localFolderMap = new Map(localFolders.map((f) => [f.serverId, f]));
+    const localFolderMap = new Map(localFolders.map((f) => [this.getServerIdentifier(f), f]));
+    const folderLocalIdByServerId = new Map<string, string>();
 
     for (const remoteFolder of remoteFolders) {
       const local = localFolderMap.get(remoteFolder.id);
 
       if (!local) {
-        await createFolder({
+        const created = await createFolder({
           serverId: remoteFolder.id,
           name: remoteFolder.name,
           icon: remoteFolder.icon,
@@ -336,18 +344,23 @@ class SyncEngine {
           syncStatus: 'synced',
           lastSyncedAt: Date.now(),
         });
+        folderLocalIdByServerId.set(remoteFolder.id, created.id);
         pulled++;
       } else if (local.syncStatus === 'synced') {
         if (local.name !== remoteFolder.name || local.icon !== remoteFolder.icon || local.color !== remoteFolder.color) {
           await updateFolder(local.id, (f) => ({
             ...f,
+            serverId: remoteFolder.id,
             name: remoteFolder.name,
             icon: remoteFolder.icon,
             color: remoteFolder.color,
             lastSyncedAt: Date.now(),
           }));
           pulled++;
+        } else if (!local.serverId) {
+          await updateFolder(local.id, (f) => ({ ...f, serverId: remoteFolder.id }));
         }
+        folderLocalIdByServerId.set(remoteFolder.id, local.id);
       }
       localFolderMap.delete(remoteFolder.id);
     }
@@ -361,10 +374,13 @@ class SyncEngine {
 
     // Reconcile prompts
     const localPrompts = (await getAllPrompts()).filter((p) => p.syncStatus !== 'deleted');
-    const localPromptMap = new Map(localPrompts.map((p) => [p.serverId, p]));
+    const localPromptMap = new Map(localPrompts.map((p) => [this.getServerIdentifier(p), p]));
 
     for (const remotePrompt of remotePrompts) {
       const local = localPromptMap.get(remotePrompt.id);
+      const localFolderId = remotePrompt.folderId
+        ? folderLocalIdByServerId.get(remotePrompt.folderId) || remotePrompt.folderId
+        : null;
 
       if (!local) {
         await createPrompt({
@@ -374,7 +390,7 @@ class SyncEngine {
           tags: JSON.stringify(remotePrompt.tags),
           isFavorite: remotePrompt.isFavorite,
           isPinned: remotePrompt.isPinned,
-          folderId: remotePrompt.folderId,
+          folderId: localFolderId,
           createdAt: remotePrompt.createdAt,
           updatedAt: remotePrompt.updatedAt,
           versions: JSON.stringify(remotePrompt.versions),
@@ -391,7 +407,7 @@ class SyncEngine {
             tags: JSON.stringify(remotePrompt.tags),
             isFavorite: remotePrompt.isFavorite,
             isPinned: remotePrompt.isPinned,
-            folderId: remotePrompt.folderId,
+            folderId: localFolderId,
             updatedAt: remotePrompt.updatedAt,
             versions: JSON.stringify(remotePrompt.versions),
             lastSyncedAt: Date.now(),
@@ -407,7 +423,7 @@ class SyncEngine {
             tags: JSON.stringify(remotePrompt.tags),
             isFavorite: remotePrompt.isFavorite,
             isPinned: remotePrompt.isPinned,
-            folderId: remotePrompt.folderId,
+            folderId: localFolderId,
             updatedAt: remotePrompt.updatedAt,
             versions: JSON.stringify(remotePrompt.versions),
             syncStatus: 'synced',
